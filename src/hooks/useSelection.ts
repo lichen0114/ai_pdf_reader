@@ -4,6 +4,7 @@ interface SelectionState {
   selectedText: string
   pageContext: string
   pageNumber: number | null
+  selectionRect: DOMRect | null
 }
 
 export function useSelection() {
@@ -11,6 +12,7 @@ export function useSelection() {
     selectedText: '',
     pageContext: '',
     pageNumber: null,
+    selectionRect: null,
   })
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
@@ -70,10 +72,14 @@ export function useSelection() {
         }
       }
 
+      // Get bounding rect for the selection
+      const selectionRect = range.getBoundingClientRect()
+
       setState({
         selectedText: text,
         pageContext: context,
         pageNumber,
+        selectionRect,
       })
     }, 300)
   }, [])
@@ -93,14 +99,28 @@ export function useSelection() {
       selectedText: '',
       pageContext: '',
       pageNumber: null,
+      selectionRect: null,
     })
     window.getSelection()?.removeAllRanges()
   }, [])
+
+  // Clear selectionRect on scroll (position becomes stale)
+  useEffect(() => {
+    const handleScroll = () => {
+      if (state.selectionRect) {
+        setState(prev => ({ ...prev, selectionRect: null }))
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [state.selectionRect])
 
   return {
     selectedText: state.selectedText,
     pageContext: state.pageContext,
     pageNumber: state.pageNumber,
+    selectionRect: state.selectionRect,
     clearSelection,
   }
 }

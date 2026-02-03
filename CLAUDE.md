@@ -35,8 +35,8 @@ AI PDF Reader is an Electron + React desktop app that lets users select text in 
 
 ### Data Flow
 
-1. User selects text in `PDFViewer` → `useSelection` hook captures text + page context
-2. Cmd+J triggers AI query → `useAI` hook calls `window.api.askAI()`
+1. User selects text in `PDFViewer` → `useSelection` hook captures text + page context + selection position
+2. User clicks floating "Ask AI" button (or Cmd+J) → `useAI` hook calls `window.api.askAI()`
 3. IPC to main process → `ProviderManager` routes to selected AI provider
 4. Provider streams response via AsyncIterable → chunks sent back via dynamic IPC channel
 5. `ResponsePanel` renders streamed markdown in real-time

@@ -192,3 +192,19 @@ body {
 .markdown-content em {
   @apply italic;
 }
+
+/* Selection popover fade-in */
+@keyframes popover-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.selection-popover {
+  animation: popover-fade-in 0.15s ease-out;
+}

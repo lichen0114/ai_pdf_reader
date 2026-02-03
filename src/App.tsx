@@ -3,6 +3,7 @@ import PDFViewer from './components/PDFViewer'
 import ResponsePanel from './components/ResponsePanel'
 import ProviderSwitcher from './components/ProviderSwitcher'
 import SettingsModal from './components/SettingsModal'
+import SelectionPopover from './components/SelectionPopover'
 import { useSelection } from './hooks/useSelection'
 import { useAI } from './hooks/useAI'
 
@@ -14,7 +15,7 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [providerRefreshKey, setProviderRefreshKey] = useState(0)
 
-  const { selectedText, pageContext, clearSelection } = useSelection()
+  const { selectedText, pageContext, selectionRect, clearSelection } = useSelection()
   const { response, isLoading, error, askAI, clearResponse } = useAI()
 
   const handleKeyChange = useCallback(() => {
@@ -159,14 +160,12 @@ function App() {
           </div>
         )}
 
-        {/* Selection hint */}
-        {selectedText && !isPanelOpen && (
-          <div className="absolute bottom-4 right-4 bg-gray-800 text-gray-300 px-4 py-2 rounded-lg shadow-lg text-sm flex items-center gap-2">
-            <span>Text selected</span>
-            <kbd className="px-2 py-0.5 bg-gray-700 rounded text-xs">⌘J</kbd>
-            <span>to ask AI</span>
-          </div>
-        )}
+        {/* Selection popover */}
+        <SelectionPopover
+          selectionRect={selectionRect}
+          onAskAI={handleAskAI}
+          isVisible={!!selectedText && !isPanelOpen}
+        />
 
         {/* Response panel */}
         <ResponsePanel
