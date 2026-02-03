@@ -12,9 +12,14 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [providerRefreshKey, setProviderRefreshKey] = useState(0)
 
   const { selectedText, pageContext, clearSelection } = useSelection()
   const { response, isLoading, error, askAI, clearResponse } = useAI()
+
+  const handleKeyChange = useCallback(() => {
+    setProviderRefreshKey(k => k + 1)
+  }, [])
 
   // Handle file open from menu
   useEffect(() => {
@@ -104,7 +109,7 @@ function App() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <ProviderSwitcher onSettingsClick={() => setIsSettingsOpen(true)} />
+          <ProviderSwitcher onSettingsClick={() => setIsSettingsOpen(true)} refreshKey={providerRefreshKey} />
         </div>
       </div>
 
@@ -178,6 +183,7 @@ function App() {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        onKeyChange={handleKeyChange}
       />
     </div>
   )

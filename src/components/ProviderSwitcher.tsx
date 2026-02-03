@@ -9,9 +9,10 @@ interface ProviderInfo {
 
 interface ProviderSwitcherProps {
   onSettingsClick: () => void
+  refreshKey?: number
 }
 
-function ProviderSwitcher({ onSettingsClick }: ProviderSwitcherProps) {
+function ProviderSwitcher({ onSettingsClick, refreshKey }: ProviderSwitcherProps) {
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [currentProvider, setCurrentProvider] = useState<ProviderInfo | null>(null)
   const [isOpen, setIsOpen] = useState(false)
@@ -21,7 +22,7 @@ function ProviderSwitcher({ onSettingsClick }: ProviderSwitcherProps) {
     if (window.api) {
       loadProviders()
     }
-  }, [])
+  }, [refreshKey])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -43,9 +44,21 @@ function ProviderSwitcher({ onSettingsClick }: ProviderSwitcherProps) {
         window.api.getCurrentProvider(),
       ])
       setProviders(providerList as ProviderInfo[])
+
       if (current) {
-        const withAvailability = providerList.find((p) => p.id === current.id)
-        setCurrentProvider((withAvailability || current) as ProviderInfo)
+        const currentWithAvailability = providerList.find((p) => p.id === current.id) as ProviderInfo | undefined
+
+        // If current provider is unavailable, auto-select the first available one
+        if (currentWithAvailability && !currentWithAvailability.available) {
+          const firstAvailable = providerList.find((p) => p.available) as ProviderInfo | undefined
+          if (firstAvailable) {
+            await window.api.setCurrentProvider(firstAvailable.id)
+            setCurrentProvider(firstAvailable)
+            return
+          }
+        }
+
+        setCurrentProvider((currentWithAvailability || current) as ProviderInfo)
       }
     } catch (err) {
       console.error('Failed to load providers:', err)

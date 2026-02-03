@@ -1,6 +1,6 @@
 import type { AIProvider, CompletionRequest } from './index'
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:streamGenerateContent'
 
 export class GeminiProvider implements AIProvider {
   id = 'gemini'

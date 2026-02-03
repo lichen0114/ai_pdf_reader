@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 interface SettingsModalProps {
   isOpen: boolean
   onClose: () => void
+  onKeyChange?: () => void
 }
 
 interface ProviderConfig {
@@ -34,7 +35,7 @@ const CLOUD_PROVIDERS: Omit<ProviderConfig, 'hasKey'>[] = [
   },
 ]
 
-function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+function SettingsModal({ isOpen, onClose, onKeyChange }: SettingsModalProps) {
   const [providers, setProviders] = useState<ProviderConfig[]>([])
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [keyValue, setKeyValue] = useState('')
@@ -79,6 +80,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       await loadKeyStatus()
       setEditingKey(null)
       setKeyValue('')
+      onKeyChange?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save API key')
     } finally {
@@ -91,6 +93,7 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     try {
       await window.api.deleteApiKey(providerId)
       await loadKeyStatus()
+      onKeyChange?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete API key')
     }
