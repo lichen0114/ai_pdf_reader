@@ -1,7 +1,4 @@
 interface STEMToolbarProps {
-  hasEquation: boolean
-  hasCode: boolean
-  hasTechnicalTerm: boolean
   onEquationClick: () => void
   onCodeClick: () => void
   onExplainerClick: () => void
@@ -36,9 +33,6 @@ function ToolbarButton({ icon, label, tooltip, onClick, disabled, colorClass }: 
 }
 
 export default function STEMToolbar({
-  hasEquation,
-  hasCode,
-  hasTechnicalTerm,
   onEquationClick,
   onCodeClick,
   onExplainerClick,
@@ -54,9 +48,9 @@ export default function STEMToolbar({
           </svg>
         }
         label="Equation"
-        tooltip={disabled ? "Select text containing an equation" : hasEquation ? "Explore equation variables" : "No equation detected in selection"}
+        tooltip={disabled ? "Select text to explore equations" : "Explore equation variables"}
         onClick={onEquationClick}
-        disabled={disabled || !hasEquation}
+        disabled={disabled}
         colorClass="text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/20"
       />
 
@@ -69,9 +63,9 @@ export default function STEMToolbar({
           </svg>
         }
         label="Run Code"
-        tooltip={disabled ? "Select a code block to run" : hasCode ? "Run code in sandbox" : "No code block detected in selection"}
+        tooltip={disabled ? "Select code to run" : "Run code in sandbox"}
         onClick={onCodeClick}
-        disabled={disabled || !hasCode}
+        disabled={disabled}
         colorClass="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/20"
       />
 
@@ -83,9 +77,9 @@ export default function STEMToolbar({
           </svg>
         }
         label="Deep Dive"
-        tooltip={disabled ? "Select a technical term to explore" : hasTechnicalTerm ? "Explore concept from first principles" : "No technical term detected in selection"}
+        tooltip={disabled ? "Select text to explore" : "Explore concept from first principles"}
         onClick={onExplainerClick}
-        disabled={disabled || !hasTechnicalTerm}
+        disabled={disabled}
         colorClass="text-amber-400 hover:text-amber-300 hover:bg-amber-500/20"
       />
     </div>

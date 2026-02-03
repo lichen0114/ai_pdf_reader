@@ -21,7 +21,6 @@ import { useUIMode } from './hooks/useUIMode'
 import { useEquationEngine } from './hooks/useEquationEngine'
 import { useCodeSandbox } from './hooks/useCodeSandbox'
 import { useConceptStack } from './hooks/useConceptStack'
-import { containsLatex, containsCode, containsTechnicalTerm } from './services/contentDetector'
 
 type AppView = 'dashboard' | 'reader'
 
@@ -148,14 +147,11 @@ function AppContent() {
         }
       }
 
-      // Cmd+E for equation explorer (when equation selected)
+      // Cmd+E for equation explorer (when text selected)
       if ((e.metaKey || e.ctrlKey) && e.key === 'e' && !e.shiftKey) {
         e.preventDefault()
         if (selectedText && currentView === 'reader') {
-          const { containsLatex } = require('./services/contentDetector')
-          if (containsLatex(selectedText)) {
-            equationEngine.openEquation(selectedText)
-          }
+          equationEngine.openEquation(selectedText)
         }
       }
 
@@ -450,9 +446,6 @@ function AppContent() {
         {/* STEM Tools - only show in reader view */}
         {currentView === 'reader' && (
           <STEMToolbar
-            hasEquation={containsLatex(selectedText)}
-            hasCode={containsCode(selectedText)}
-            hasTechnicalTerm={containsTechnicalTerm(selectedText)}
             onEquationClick={() => selectedText && equationEngine.openEquation(selectedText)}
             onCodeClick={() => selectedText && codeSandbox.openSandbox(selectedText)}
             onExplainerClick={() => selectedText && conceptStack.pushCard(selectedText)}
