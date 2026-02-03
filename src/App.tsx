@@ -4,17 +4,30 @@ import ResponsePanel from './components/ResponsePanel'
 import ProviderSwitcher from './components/ProviderSwitcher'
 import SettingsModal from './components/SettingsModal'
 import SelectionPopover from './components/SelectionPopover'
+import STEMToolbar from './components/STEMToolbar'
 import ActivePaperDashboard from './components/dashboard/ActivePaperDashboard'
 import TabBar from './components/TabBar'
+import ModeIndicator from './components/modes/ModeIndicator'
+import VariableManipulationModal from './components/equation/VariableManipulationModal'
+import CodeSandboxDrawer from './components/code/CodeSandboxDrawer'
+import ConceptStackPanel from './components/explainer/ConceptStackPanel'
+import { ModeProvider } from './contexts/ModeContext'
 import { useSelection } from './hooks/useSelection'
 import { useAI } from './hooks/useAI'
 import { useConversation } from './hooks/useConversation'
 import { useHistory, type ActionType } from './hooks/useHistory'
 import { useTabs } from './hooks/useTabs'
+import { useUIMode } from './hooks/useUIMode'
+import { useEquationEngine } from './hooks/useEquationEngine'
+import { useCodeSandbox } from './hooks/useCodeSandbox'
+import { useConceptStack } from './hooks/useConceptStack'
+import { containsLatex, containsCode, containsTechnicalTerm } from './services/contentDetector'
 
 type AppView = 'dashboard' | 'reader'
 
-function App() {
+// Inner app component that uses mode context
+function AppContent() {
+  const { mode, simulationType, isSimulating, exitSimulation, enterSimulation } = useUIMode()
   const [currentView, setCurrentView] = useState<AppView>('dashboard')
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -48,6 +61,24 @@ function App() {
   const { response, isLoading, error, askAI, clearResponse } = useAI()
   const { conversation, startConversation, addMessage, appendToLastAssistantMessage, clearConversation } = useConversation()
   const { history, addEntry, getEntry } = useHistory()
+
+  // Equation engine
+  const equationEngine = useEquationEngine({
+    onSimulationStart: () => enterSimulation('equation'),
+    onSimulationEnd: exitSimulation,
+  })
+
+  // Code sandbox
+  const codeSandbox = useCodeSandbox({
+    onSimulationStart: () => enterSimulation('code'),
+    onSimulationEnd: exitSimulation,
+  })
+
+  // Concept stack (first principles explainer)
+  const conceptStack = useConceptStack({
+    onSimulationStart: () => enterSimulation('explainer'),
+    onSimulationEnd: exitSimulation,
+  })
 
   const handleKeyChange = useCallback(() => {
     setProviderRefreshKey(k => k + 1)
@@ -85,9 +116,57 @@ function App() {
     return () => unsubscribe()
   }, [currentView, closeCurrentTab])
 
-  // Handle Cmd+J keyboard shortcut (default 'explain' action)
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape - close simulation mode, panels, or concept stack
+      if (e.key === 'Escape') {
+        if (equationEngine.isOpen) {
+          e.preventDefault()
+          equationEngine.closeEquation()
+          return
+        }
+        if (codeSandbox.isOpen) {
+          e.preventDefault()
+          codeSandbox.closeSandbox()
+          return
+        }
+        if (conceptStack.isOpen) {
+          e.preventDefault()
+          // Pop one card or close if only one
+          if (conceptStack.cards.length > 1) {
+            conceptStack.popCard()
+          } else {
+            conceptStack.closeStack()
+          }
+          return
+        }
+        if (isPanelOpen) {
+          e.preventDefault()
+          handleClosePanel()
+          return
+        }
+      }
+
+      // Cmd+E for equation explorer (when equation selected)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'e' && !e.shiftKey) {
+        e.preventDefault()
+        if (selectedText && currentView === 'reader') {
+          const { containsLatex } = require('./services/contentDetector')
+          if (containsLatex(selectedText)) {
+            equationEngine.openEquation(selectedText)
+          }
+        }
+      }
+
+      // Cmd+R for run code (when code sandbox open)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'r' && !e.shiftKey) {
+        if (codeSandbox.isOpen && !codeSandbox.isRunning) {
+          e.preventDefault()
+          codeSandbox.runCode()
+        }
+      }
+
       // Cmd+J for explain
       if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
         e.preventDefault()
@@ -119,7 +198,14 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedText, pageContext, currentView, tabs.length, selectPreviousTab, selectNextTab, selectTabByIndex])
+  }, [
+    selectedText, pageContext, currentView, tabs.length,
+    selectPreviousTab, selectNextTab, selectTabByIndex,
+    isPanelOpen,
+    equationEngine.isOpen, equationEngine.openEquation, equationEngine.closeEquation,
+    codeSandbox.isOpen, codeSandbox.isRunning, codeSandbox.runCode, codeSandbox.closeSandbox,
+    conceptStack.isOpen, conceptStack.cards.length, conceptStack.popCard, conceptStack.closeStack,
+  ])
 
   const handleAskAI = useCallback(async (action: ActionType = 'explain') => {
     if (!selectedText) return
@@ -340,7 +426,7 @@ function App() {
   }) || []
 
   return (
-    <div className="h-full flex flex-col bg-gray-900">
+    <div className={`h-full flex flex-col bg-gray-900 ${isSimulating ? 'simulation-mode' : ''}`}>
       {/* Title bar / Top bar */}
       <div className="app-titlebar flex items-center justify-between px-4 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center gap-3 pl-16">
@@ -360,6 +446,20 @@ function App() {
             </button>
           </div>
         </div>
+
+        {/* STEM Tools - only show in reader view */}
+        {currentView === 'reader' && (
+          <STEMToolbar
+            hasEquation={containsLatex(selectedText)}
+            hasCode={containsCode(selectedText)}
+            hasTechnicalTerm={containsTechnicalTerm(selectedText)}
+            onEquationClick={() => selectedText && equationEngine.openEquation(selectedText)}
+            onCodeClick={() => selectedText && codeSandbox.openSandbox(selectedText)}
+            onExplainerClick={() => selectedText && conceptStack.pushCard(selectedText)}
+            disabled={!selectedText}
+          />
+        )}
+
         <div className="flex items-center gap-2">
           <ProviderSwitcher onSettingsClick={() => setIsSettingsOpen(true)} refreshKey={providerRefreshKey} />
         </div>
@@ -382,9 +482,9 @@ function App() {
           <ActivePaperDashboard onOpenDocument={handleOpenDocument} />
         ) : (
           <>
-            {/* PDF container - shrinks when sidebar opens */}
+            {/* PDF container - shrinks when sidebar/drawer opens */}
             <div
-              className={`flex-1 relative overflow-hidden transition-all duration-300 ${isPanelOpen ? 'mr-[400px]' : ''}`}
+              className={`flex-1 relative overflow-hidden transition-all duration-300 ${isPanelOpen || conceptStack.isOpen ? 'mr-[400px]' : ''} ${codeSandbox.isOpen ? 'mb-[35vh]' : ''}`}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
             >
@@ -457,8 +557,12 @@ function App() {
               {/* Selection toolbar */}
               <SelectionPopover
                 selectionRect={selectionRect}
+                selectedText={selectedText}
                 onAction={handleAskAI}
-                isVisible={!!selectedText && !isPanelOpen}
+                onEquationClick={equationEngine.openEquation}
+                onCodeClick={codeSandbox.openSandbox}
+                onExplainerClick={conceptStack.pushCard}
+                isVisible={!!selectedText && !isPanelOpen && !equationEngine.isOpen && !codeSandbox.isOpen && !conceptStack.isOpen}
               />
             </div>
 
@@ -486,7 +590,68 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         onKeyChange={handleKeyChange}
       />
+
+      {/* Mode indicator - only in reader view */}
+      {currentView === 'reader' && (
+        <ModeIndicator mode={mode} simulationType={simulationType} />
+      )}
+
+      {/* Equation manipulation modal */}
+      <VariableManipulationModal
+        isOpen={equationEngine.isOpen}
+        originalLatex={equationEngine.originalLatex}
+        parsedEquation={equationEngine.parsedEquation}
+        isParsing={equationEngine.isParsing}
+        error={equationEngine.error}
+        graphData={equationEngine.graphData}
+        graphIndependentVar={equationEngine.graphIndependentVar}
+        currentResult={equationEngine.currentResult}
+        onClose={equationEngine.closeEquation}
+        onUpdateVariable={equationEngine.updateVariable}
+        onSetGraphVariable={equationEngine.setGraphIndependentVar}
+      />
+
+      {/* Code sandbox drawer */}
+      <CodeSandboxDrawer
+        isOpen={codeSandbox.isOpen}
+        code={codeSandbox.editedCode}
+        runtime={codeSandbox.runtime}
+        output={codeSandbox.output}
+        isRunning={codeSandbox.isRunning}
+        isRuntimeReady={codeSandbox.isRuntimeReady}
+        isLoadingRuntime={codeSandbox.isLoadingRuntime}
+        error={codeSandbox.error}
+        onClose={codeSandbox.closeSandbox}
+        onCodeChange={codeSandbox.updateCode}
+        onRuntimeChange={codeSandbox.setRuntime}
+        onRun={codeSandbox.runCode}
+        onStop={codeSandbox.stopCode}
+        onClear={codeSandbox.clearOutput}
+        onReset={codeSandbox.resetCode}
+      />
+
+      {/* Concept stack panel (first principles explainer) */}
+      <ConceptStackPanel
+        isOpen={conceptStack.isOpen}
+        cards={conceptStack.cards}
+        breadcrumbs={conceptStack.breadcrumbs}
+        isLoading={conceptStack.isLoading}
+        error={conceptStack.error}
+        onTermClick={conceptStack.pushCard}
+        onNavigate={conceptStack.popToIndex}
+        onClose={conceptStack.closeStack}
+        onBack={conceptStack.popCard}
+      />
     </div>
+  )
+}
+
+// Main App component wrapped with providers
+function App() {
+  return (
+    <ModeProvider>
+      <AppContent />
+    </ModeProvider>
   )
 }
 

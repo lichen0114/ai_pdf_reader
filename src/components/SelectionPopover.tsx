@@ -1,8 +1,20 @@
+import { useMemo } from 'react'
 import type { ActionType } from '../hooks/useHistory'
+import {
+  containsLatex,
+  containsCode,
+  containsTechnicalTerm,
+  getSelectionContentType,
+  type SelectionContentType,
+} from '../services/contentDetector'
 
 interface SelectionToolbarProps {
   selectionRect: DOMRect | null
+  selectedText?: string
   onAction: (action: ActionType) => void
+  onEquationClick?: (latex: string) => void
+  onCodeClick?: (code: string) => void
+  onExplainerClick?: (term: string) => void
   isVisible: boolean
 }
 
@@ -10,13 +22,14 @@ interface ToolbarButtonProps {
   icon: React.ReactNode
   label: string
   onClick: () => void
+  className?: string
 }
 
-function ToolbarButton({ icon, label, onClick }: ToolbarButtonProps) {
+function ToolbarButton({ icon, label, onClick, className = '' }: ToolbarButtonProps) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700/60 rounded-full transition-colors"
+      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-700/60 rounded-full transition-colors ${className}`}
     >
       {icon}
       <span>{label}</span>
@@ -24,11 +37,43 @@ function ToolbarButton({ icon, label, onClick }: ToolbarButtonProps) {
   )
 }
 
-export default function SelectionPopover({ selectionRect, onAction, isVisible }: SelectionToolbarProps) {
+// Divider between action groups
+function Divider() {
+  return <div className="w-px h-5 bg-gray-600/50 mx-1" />
+}
+
+export default function SelectionPopover({
+  selectionRect,
+  selectedText = '',
+  onAction,
+  onEquationClick,
+  onCodeClick,
+  onExplainerClick,
+  isVisible,
+}: SelectionToolbarProps) {
+  // Detect content type
+  const contentType = useMemo<SelectionContentType>(() => {
+    if (!selectedText) return 'general'
+    return getSelectionContentType(selectedText)
+  }, [selectedText])
+
+  const hasEquation = contentType === 'equation' || containsLatex(selectedText)
+  const hasCode = contentType === 'code' || containsCode(selectedText)
+  const hasTechnicalTerm = contentType === 'term' || containsTechnicalTerm(selectedText)
+
+  // Show STEM actions if we have handlers and detected content
+  const showEquationAction = hasEquation && onEquationClick
+  const showCodeAction = hasCode && onCodeClick
+  const showExplainerAction = hasTechnicalTerm && onExplainerClick
+
+  const hasStemActions = showEquationAction || showCodeAction || showExplainerAction
+
   if (!isVisible || !selectionRect) return null
 
-  // Position ABOVE selection
-  const toolbarWidth = 280
+  // Calculate toolbar width based on content
+  const baseWidth = 280
+  const stemWidth = hasStemActions ? 120 : 0
+  const toolbarWidth = baseWidth + stemWidth
   const toolbarHeight = 40
   const padding = 8
   const gap = 8
@@ -55,6 +100,7 @@ export default function SelectionPopover({ selectionRect, onAction, isVisible }:
         top: `${top}px`,
       }}
     >
+      {/* Standard actions */}
       <ToolbarButton
         icon={
           <svg className="w-4 h-4 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -82,6 +128,56 @@ export default function SelectionPopover({ selectionRect, onAction, isVisible }:
         label="Define"
         onClick={() => onAction('define')}
       />
+
+      {/* STEM actions - context-sensitive */}
+      {hasStemActions && (
+        <>
+          <Divider />
+
+          {/* Equation explorer */}
+          {showEquationAction && (
+            <ToolbarButton
+              icon={
+                <svg className="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+              }
+              label="Variables"
+              onClick={() => onEquationClick(selectedText)}
+              className="stem-action-btn equation"
+            />
+          )}
+
+          {/* Code sandbox */}
+          {showCodeAction && (
+            <ToolbarButton
+              icon={
+                <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              }
+              label="Run"
+              onClick={() => onCodeClick(selectedText)}
+              className="stem-action-btn code"
+            />
+          )}
+
+          {/* First principles explainer */}
+          {showExplainerAction && (
+            <ToolbarButton
+              icon={
+                <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              }
+              label="Deep Dive"
+              onClick={() => onExplainerClick(selectedText)}
+              className="stem-action-btn explainer"
+            />
+          )}
+        </>
+      )}
     </div>
   )
 }

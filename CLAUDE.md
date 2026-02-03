@@ -25,7 +25,7 @@ Tests use Vitest with jsdom environment. Test files are in `tests/` mirroring th
 
 ## Architecture
 
-ActivePaper is an Electron + React desktop app that lets users select text in PDFs and get AI-powered explanations via multiple providers. It includes a metacognitive "ActivePaper Dashboard" for tracking learning activity.
+ActivePaper is an Electron + React desktop app that lets users select text in PDFs and get AI-powered explanations via multiple providers. It includes a metacognitive "ActivePaper Dashboard" for tracking learning activity and STEM-focused tools for interactive exploration.
 
 ### Process Model
 
@@ -114,6 +114,7 @@ The app has two main views toggled via the title bar:
 - PDF container: Flexes to fill available space, gets `mr-[400px]` margin when sidebar opens
 - ResponsePanel: Fixed 400px right sidebar with glass aesthetic (`glass-panel` class)
 - SelectionPopover: Floating toolbar above text selection
+- STEMToolbar: Top bar buttons for STEM tools (always visible, enabled when text selected)
 
 ### Tab System
 
@@ -122,6 +123,40 @@ Multiple PDFs can be open simultaneously in tabs. Key design decisions:
 - **All PDFViewers stay mounted**: Instead of using `key={activeTab.id}` which would force remounting, render all tabs with `tabs.map()` and use `className={tab.id === activeTabId ? 'block h-full' : 'hidden'}` to show/hide. This enables instant tab switching without PDF re-rendering.
 - **State per tab**: Each tab stores its own `pdfData`, `scrollPosition`, `scale`, and `documentId` via `useTabs` hook
 - **Keyboard navigation**: Cmd+Shift+[ / ] for prev/next tab, Cmd+1-9 for direct tab access
+
+### UI Mode System
+
+The app uses a three-mode system managed by `ModeContext`:
+
+- **reading**: Default mode, normal PDF viewing
+- **investigate**: Alt/Option key held, interactive zones glow (planned feature)
+- **simulation**: A STEM tool is open (dims PDF background)
+
+Mode transitions: `reading` ↔ `investigate` (Alt key), `reading`/`investigate` → `simulation` (tool opens), `simulation` → `reading` (tool closes/Escape)
+
+### STEM Tools
+
+Three interactive tools for STEM content, accessible via SelectionPopover (context-sensitive) or STEMToolbar (top bar):
+
+**Equation Explorer** (`useEquationEngine`, `VariableManipulationModal`):
+- Parses LaTeX equations using AI to extract variables with ranges
+- Sliders to manipulate variable values in real-time
+- Live graph generation showing relationships between variables
+- Detection: `containsLatex()` in `contentDetector.ts`
+
+**Code Sandbox** (`useCodeSandbox`, `CodeSandboxDrawer`):
+- Executes JavaScript/Python code in-browser via Pyodide
+- Editor with syntax highlighting, real-time output
+- Runtime auto-detection from code block language markers
+- Detection: `containsCode()` in `contentDetector.ts`
+
+**Deep Dive / First Principles Explainer** (`useConceptStack`, `ConceptStackPanel`):
+- Recursive concept explanation with breadcrumb navigation
+- Click bold terms to drill deeper (max depth enforced)
+- Stack-based navigation for exploration history
+- Detection: `containsTechnicalTerm()` in `contentDetector.ts`
+
+Content detection uses regex patterns in `src/services/contentDetector.ts` for LaTeX (`$...$`, `$$...$$`, `\command{}`), code blocks (``` markers), and technical terms (STEM vocabulary patterns).
 
 ### React Hooks
 
@@ -133,6 +168,10 @@ Multiple PDFs can be open simultaneously in tabs. Key design decisions:
 - `useDashboard` - Fetches all dashboard data (recent docs, stats, concepts, review count)
 - `useReviewCards` - Review card state, flip, and rating actions
 - `useConceptGraph` - Concept graph data with node selection
+- `useUIMode` - Access to UI mode system (reading/investigate/simulation)
+- `useEquationEngine` - Equation parsing, variable manipulation, graph generation
+- `useCodeSandbox` - Code execution, runtime management, output streaming
+- `useConceptStack` - Recursive concept exploration with stack navigation
 
 ## Build Notes
 
@@ -183,3 +222,7 @@ Configured in both `vite.config.ts` and `vitest.config.ts`:
 ## Type Declarations
 
 - `src/vite-env.d.ts` - Global types for renderer process (`Window.api` interface with all IPC methods)
+- `src/types/modes.ts` - UI mode system types
+- `src/types/equation.ts` - Equation engine types
+- `src/types/code.ts` - Code sandbox types
+- `src/types/explainer.ts` - Concept stack types

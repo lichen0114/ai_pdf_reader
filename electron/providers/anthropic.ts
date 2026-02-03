@@ -105,6 +105,45 @@ export class AnthropicProvider implements AIProvider {
           prompt += `\n\nContext from the document:\n"${context}"`
         }
         break
+      case 'parse_equation':
+        prompt = `Analyze this mathematical equation or formula and extract its variables. Return ONLY a JSON object with this exact structure (no markdown, no explanation):
+{
+  "variables": [
+    {"name": "variable_symbol", "description": "what it represents", "range": [min, max], "unit": "optional_unit"}
+  ],
+  "formula": "the equation in readable form",
+  "compute": "JavaScript expression to compute the dependent variable, using variable names"
+}
+
+For example, for "F = ma":
+{
+  "variables": [
+    {"name": "m", "description": "mass", "range": [0, 100], "unit": "kg"},
+    {"name": "a", "description": "acceleration", "range": [0, 20], "unit": "m/s²"}
+  ],
+  "formula": "F = ma",
+  "compute": "m * a"
+}
+
+Equation to analyze: "${text}"`
+        break
+      case 'explain_fundamental':
+        prompt = `Explain this concept using first principles, starting from the most fundamental ideas. Make any technical terms you use **bold** so they can be clicked for further explanation.
+
+Keep the explanation concise but thorough. Focus on building understanding from the ground up.
+
+Concept: "${text}"`
+        if (context) {
+          prompt += `\n\nContext from the document:\n"${context}"`
+        }
+        break
+      case 'extract_terms':
+        prompt = `Extract the technical terms from this text that could benefit from further explanation. Return ONLY a JSON array of term objects (no markdown, no explanation):
+
+[{"term": "technical_term", "description": "brief_description"}]
+
+Text: "${text}"`
+        break
       case 'explain':
       default:
         prompt = `Explain this text from a PDF document in simple terms:\n\n"${text}"`

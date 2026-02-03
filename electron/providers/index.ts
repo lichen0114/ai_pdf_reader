@@ -4,7 +4,7 @@ import { OpenAIProvider } from './openai'
 import { AnthropicProvider } from './anthropic'
 import { KeyStore } from '../security/key-store'
 
-export type ActionType = 'explain' | 'summarize' | 'define'
+export type ActionType = 'explain' | 'summarize' | 'define' | 'parse_equation' | 'explain_fundamental' | 'extract_terms'
 
 export interface ConversationMessage {
   role: 'user' | 'assistant'

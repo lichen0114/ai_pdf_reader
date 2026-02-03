@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-type ActionType = 'explain' | 'summarize' | 'define'
+type ActionType = 'explain' | 'summarize' | 'define' | 'parse_equation' | 'explain_fundamental' | 'extract_terms'
 
 interface ConversationMessage {
   role: 'user' | 'assistant'

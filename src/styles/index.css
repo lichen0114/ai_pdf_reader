@@ -661,3 +661,384 @@ body {
   background: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.7);
 }
+
+/* ============================================
+   STEM EDITION - MODE SYSTEM STYLES
+   ============================================ */
+
+/* Simulation mode - dim PDF */
+.simulation-mode .pdf-page {
+  opacity: 0.4;
+  transition: opacity 0.3s ease;
+}
+
+.simulation-mode .pdf-page:hover {
+  opacity: 0.6;
+}
+
+/* Investigate mode - interactive zone glow effect */
+.interactive-zone {
+  position: absolute;
+  border-radius: 4px;
+  pointer-events: auto;
+  transition: all 0.2s ease;
+}
+
+.interactive-zone:hover {
+  transform: scale(1.02);
+}
+
+/* Zone type colors */
+.zone-equation {
+  --zone-color: rgba(129, 140, 248, 0.6);
+  --zone-glow: rgba(129, 140, 248, 0.4);
+  --zone-bg: rgba(129, 140, 248, 0.1);
+}
+
+.zone-code {
+  --zone-color: rgba(52, 211, 153, 0.6);
+  --zone-glow: rgba(52, 211, 153, 0.4);
+  --zone-bg: rgba(52, 211, 153, 0.1);
+}
+
+.zone-term {
+  --zone-color: rgba(251, 191, 36, 0.6);
+  --zone-glow: rgba(251, 191, 36, 0.4);
+  --zone-bg: rgba(251, 191, 36, 0.1);
+}
+
+/* Pulsing glow animation for interactive zones */
+@keyframes zone-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px var(--zone-glow, rgba(129, 140, 248, 0.4));
+  }
+  50% {
+    box-shadow: 0 0 16px var(--zone-glow, rgba(129, 140, 248, 0.6));
+  }
+}
+
+.animate-pulse-glow {
+  animation: zone-pulse-glow 1.5s ease-in-out infinite;
+}
+
+/* Panel slide-in animations */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-in-bottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-bottom {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out forwards;
+}
+
+.animate-slide-out-right {
+  animation: slide-out-right 0.3s ease-in forwards;
+}
+
+.animate-slide-in-bottom {
+  animation: slide-in-bottom 0.3s ease-out forwards;
+}
+
+.animate-slide-out-bottom {
+  animation: slide-out-bottom 0.3s ease-in forwards;
+}
+
+/* Modal fade animations */
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modal-fade-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.animate-modal-in {
+  animation: modal-fade-in 0.2s ease-out forwards;
+}
+
+.animate-modal-out {
+  animation: modal-fade-out 0.15s ease-in forwards;
+}
+
+/* STEM action buttons in selection popover */
+.stem-action-btn {
+  @apply flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full transition-all duration-150;
+}
+
+/* STEM toolbar buttons in top bar */
+.stem-toolbar-btn {
+  @apply flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-150;
+}
+
+.stem-toolbar-btn:not(:disabled):hover {
+  transform: scale(1.02);
+}
+
+.stem-toolbar-btn:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.stem-action-btn:hover {
+  transform: translateY(-1px);
+}
+
+.stem-action-btn.equation {
+  @apply text-indigo-300 hover:bg-indigo-500/20;
+}
+
+.stem-action-btn.code {
+  @apply text-emerald-300 hover:bg-emerald-500/20;
+}
+
+.stem-action-btn.explainer {
+  @apply text-amber-300 hover:bg-amber-500/20;
+}
+
+/* Mode indicator styles */
+.mode-indicator {
+  @apply fixed bottom-4 left-4 z-50;
+  @apply flex items-center gap-2 px-3 py-1.5;
+  @apply rounded-full border border-gray-700/50;
+  @apply backdrop-blur-sm shadow-lg;
+  @apply transition-all duration-300;
+}
+
+/* Investigate mode indicator */
+.mode-indicator.investigate {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+/* Simulation mode indicator */
+.mode-indicator.simulation {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+/* ============================================
+   EQUATION ENGINE STYLES
+   ============================================ */
+
+/* Variable slider thumb styling */
+.variable-slider input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.variable-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #374151;
+  cursor: grab;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.variable-slider input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+}
+
+.variable-slider input[type="range"]::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.05);
+}
+
+.variable-slider input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  border: 2px solid #374151;
+  cursor: grab;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.variable-slider input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.1);
+}
+
+/* KaTeX styling overrides */
+.katex {
+  font-size: 1.2em !important;
+}
+
+.katex-display {
+  margin: 0 !important;
+}
+
+/* ============================================
+   CODE SANDBOX STYLES
+   ============================================ */
+
+/* Code editor textarea styling */
+.code-editor-textarea {
+  tab-size: 2;
+  -moz-tab-size: 2;
+}
+
+/* Terminal output styling */
+.terminal-output {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', monospace;
+}
+
+/* ============================================
+   CONCEPT STACK STYLES
+   ============================================ */
+
+/* Concept card styling */
+.concept-card {
+  backdrop-filter: blur(10px);
+}
+
+/* Term highlight in explanations */
+.term-highlight-text button {
+  display: inline;
+  padding: 0 2px;
+  margin: 0 -2px;
+}
+
+/* Breadcrumb nav scrollbar */
+.breadcrumb-nav::-webkit-scrollbar {
+  height: 4px;
+}
+
+.breadcrumb-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.breadcrumb-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+/* ============================================
+   RESPONSIVE PANEL TRANSITIONS
+   ============================================ */
+
+/* Smooth opacity transition for PDF when in simulation */
+.pdf-container-transition {
+  transition: margin-right 0.3s ease, margin-bottom 0.3s ease;
+}
+
+/* Panel width 450px for concept stack */
+.concept-panel {
+  width: 450px;
+  max-width: 50vw;
+}
+
+/* Code sandbox drawer height */
+.code-drawer {
+  height: 35vh;
+  min-height: 280px;
+  max-height: 50vh;
+}
+
+/* ============================================
+   LOADING STATES
+   ============================================ */
+
+/* Skeleton loading animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ============================================
+   FOCUS STATES FOR ACCESSIBILITY
+   ============================================ */
+
+/* Custom focus ring for interactive elements */
+.focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
+}
+
+/* Button focus states */
+button:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.5);
+  outline-offset: 2px;
+}
+
+/* Slider focus state */
+input[type="range"]:focus-visible {
+  outline: none;
+}
+
+input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.3);
+}

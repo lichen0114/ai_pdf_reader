@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 
-export type ActionType = 'explain' | 'summarize' | 'define'
+export type ActionType = 'explain' | 'summarize' | 'define' | 'parse_equation' | 'explain_fundamental' | 'extract_terms'
 
 export interface HistoryEntry {
   id: string
