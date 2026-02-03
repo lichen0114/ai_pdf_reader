@@ -102,7 +102,9 @@ interface Window {
     deleteApiKey: (providerId: string) => Promise<boolean>
     readFile: (filePath: string) => Promise<ArrayBuffer>
     getFilePath: (file: File) => string
+    openFileDialog: () => Promise<string | null>
     onFileOpened: (callback: (filePath: string) => void) => () => void
+    onTabCloseRequested: (callback: () => void) => () => void
     // Database - Documents
     getRecentDocuments: (limit?: number) => Promise<Document[]>
     getOrCreateDocument: (data: { filename: string; filepath: string; total_pages?: number }) => Promise<Document>

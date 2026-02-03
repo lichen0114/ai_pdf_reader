@@ -64,6 +64,13 @@ function createMenu() {
             }
           },
         },
+        {
+          label: 'Close Tab',
+          accelerator: 'CmdOrCtrl+W',
+          click: () => {
+            mainWindow?.webContents.send('tab:close-current')
+          },
+        },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -185,6 +192,17 @@ function setupIPC() {
     const buffer = await fs.readFile(filePath)
     // Convert Buffer to ArrayBuffer for proper IPC serialization with contextIsolation
     return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+  })
+
+  ipcMain.handle('file:openDialog', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openFile'],
+      filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
+    return result.filePaths[0]
   })
 
   // Database operations - Documents

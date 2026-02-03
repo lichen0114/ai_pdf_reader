@@ -115,12 +115,21 @@ The app has two main views toggled via the title bar:
 - ResponsePanel: Fixed 400px right sidebar with glass aesthetic (`glass-panel` class)
 - SelectionPopover: Floating toolbar above text selection
 
+### Tab System
+
+Multiple PDFs can be open simultaneously in tabs. Key design decisions:
+
+- **All PDFViewers stay mounted**: Instead of using `key={activeTab.id}` which would force remounting, render all tabs with `tabs.map()` and use `className={tab.id === activeTabId ? 'block h-full' : 'hidden'}` to show/hide. This enables instant tab switching without PDF re-rendering.
+- **State per tab**: Each tab stores its own `pdfData`, `scrollPosition`, `scale`, and `documentId` via `useTabs` hook
+- **Keyboard navigation**: Cmd+Shift+[ / ] for prev/next tab, Cmd+1-9 for direct tab access
+
 ### React Hooks
 
 - `useSelection` - Captures text selection, page context, and DOMRect position
 - `useAI` - Manages AI query state, streaming responses, supports action types and conversation history
 - `useConversation` - Manages follow-up conversation state (messages array, selected text context)
 - `useHistory` - Tracks session query history (in-memory, cleared on app restart)
+- `useTabs` - Tab state management (open, close, select, update tabs with per-tab scroll/scale)
 - `useDashboard` - Fetches all dashboard data (recent docs, stats, concepts, review count)
 - `useReviewCards` - Review card state, flip, and rating actions
 - `useConceptGraph` - Concept graph data with node selection

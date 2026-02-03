@@ -5,23 +5,36 @@ import ProviderSwitcher from './components/ProviderSwitcher'
 import SettingsModal from './components/SettingsModal'
 import SelectionPopover from './components/SelectionPopover'
 import SynapseDashboard from './components/dashboard/SynapseDashboard'
+import TabBar from './components/TabBar'
 import { useSelection } from './hooks/useSelection'
 import { useAI } from './hooks/useAI'
 import { useConversation } from './hooks/useConversation'
 import { useHistory, type ActionType } from './hooks/useHistory'
+import { useTabs } from './hooks/useTabs'
 
 type AppView = 'dashboard' | 'reader'
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('dashboard')
-  const [pdfFile, setPdfFile] = useState<ArrayBuffer | null>(null)
-  const [fileName, setFileName] = useState<string>('')
-  const [loadError, setLoadError] = useState<string | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [providerRefreshKey, setProviderRefreshKey] = useState(0)
   const [currentAction, setCurrentAction] = useState<ActionType>('explain')
-  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null)
+
+  // Tab management
+  const {
+    tabs,
+    activeTabId,
+    activeTab,
+    openTab,
+    closeTab,
+    selectTab,
+    updateTab,
+    selectPreviousTab,
+    selectNextTab,
+    selectTabByIndex,
+    closeCurrentTab,
+  } = useTabs()
 
   // Ref to track the last completed interaction for concept extraction
   const pendingConceptExtraction = useRef<{
@@ -40,29 +53,13 @@ function App() {
     setProviderRefreshKey(k => k + 1)
   }, [])
 
-  // Open a document from the dashboard
+  // Open a document (from dashboard, menu, or drag-drop)
   const handleOpenDocument = useCallback(async (documentFilePath: string) => {
     if (!window.api) return
 
-    try {
-      setLoadError(null)
-      const arrayBuffer = await window.api.readFile(documentFilePath)
-      setPdfFile(arrayBuffer)
-      setFileName(documentFilePath.split('/').pop() || 'document.pdf')
-      setCurrentView('reader')
-
-      // Get or create document record
-      const doc = await window.api.getOrCreateDocument({
-        filename: documentFilePath.split('/').pop() || 'document.pdf',
-        filepath: documentFilePath,
-      })
-      setCurrentDocumentId(doc.id)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to open file'
-      setLoadError(message)
-      console.error('Failed to open file:', err)
-    }
-  }, [])
+    await openTab(documentFilePath)
+    setCurrentView('reader')
+  }, [openTab])
 
   // Handle file open from menu
   useEffect(() => {
@@ -75,20 +72,54 @@ function App() {
     return () => unsubscribe()
   }, [handleOpenDocument])
 
+  // Handle Cmd+W from menu to close current tab
+  useEffect(() => {
+    if (!window.api) return
+
+    const unsubscribe = window.api.onTabCloseRequested(() => {
+      if (currentView === 'reader') {
+        closeCurrentTab()
+      }
+    })
+
+    return () => unsubscribe()
+  }, [currentView, closeCurrentTab])
+
   // Handle Cmd+J keyboard shortcut (default 'explain' action)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+J for explain
       if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
         e.preventDefault()
         if (selectedText && currentView === 'reader') {
           handleAskAI('explain')
         }
       }
+
+      // Tab navigation shortcuts (only in reader view with tabs)
+      if (currentView === 'reader' && tabs.length > 0) {
+        // Cmd+Shift+[ for previous tab
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === '[') {
+          e.preventDefault()
+          selectPreviousTab()
+        }
+        // Cmd+Shift+] for next tab
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === ']') {
+          e.preventDefault()
+          selectNextTab()
+        }
+        // Cmd+1-9 for tab by index
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key >= '1' && e.key <= '9') {
+          e.preventDefault()
+          const index = parseInt(e.key) - 1
+          selectTabByIndex(index)
+        }
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedText, pageContext, currentView])
+  }, [selectedText, pageContext, currentView, tabs.length, selectPreviousTab, selectNextTab, selectTabByIndex])
 
   const handleAskAI = useCallback(async (action: ActionType = 'explain') => {
     if (!selectedText) return
@@ -130,6 +161,7 @@ function App() {
       })
 
       // Save interaction to database
+      const currentDocumentId = activeTab?.documentId
       if (window.api && currentDocumentId) {
         window.api.saveInteraction({
           document_id: currentDocumentId,
@@ -158,7 +190,7 @@ function App() {
         })
       }
     }
-  }, [isLoading, response])
+  }, [isLoading, response, activeTab?.documentId])
 
   // Extract concepts in background after interaction is saved
   const extractConceptsInBackground = useCallback(async () => {
@@ -267,12 +299,9 @@ function App() {
     if (!window.api) return
 
     try {
-      setLoadError(null)
       const droppedFilePath = window.api.getFilePath(file)
       await handleOpenDocument(droppedFilePath)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to open file'
-      setLoadError(message)
       console.error('Failed to open dropped file:', err)
     }
   }, [handleOpenDocument])
@@ -280,6 +309,26 @@ function App() {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
   }
+
+  // Handle new tab button click
+  const handleNewTab = useCallback(async () => {
+    if (!window.api) return
+    const filePath = await window.api.openFileDialog()
+    if (filePath) {
+      await handleOpenDocument(filePath)
+    }
+  }, [handleOpenDocument])
+
+  // Handle tab close
+  const handleTabClose = useCallback((tabId: string) => {
+    // Clear conversation when closing active tab
+    if (tabId === activeTabId) {
+      setIsPanelOpen(false)
+      clearResponse()
+      clearConversation()
+    }
+    closeTab(tabId)
+  }, [activeTabId, closeTab, clearResponse, clearConversation])
 
   // Get messages for display (use conversation messages or response for display)
   const displayMessages = conversation?.messages.map((msg, idx) => {
@@ -310,17 +359,22 @@ function App() {
               Reader
             </button>
           </div>
-
-          {currentView === 'reader' && fileName && (
-            <span className="text-sm text-gray-400 truncate max-w-md">
-              {fileName}
-            </span>
-          )}
         </div>
         <div className="flex items-center gap-2">
           <ProviderSwitcher onSettingsClick={() => setIsSettingsOpen(true)} refreshKey={providerRefreshKey} />
         </div>
       </div>
+
+      {/* Tab bar - only show in reader view when there are tabs */}
+      {currentView === 'reader' && tabs.length > 0 && (
+        <TabBar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onTabSelect={selectTab}
+          onTabClose={handleTabClose}
+          onNewTab={handleNewTab}
+        />
+      )}
 
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
@@ -334,9 +388,35 @@ function App() {
               onDrop={handleDrop}
               onDragOver={handleDragOver}
             >
-              {pdfFile ? (
-                <PDFViewer data={pdfFile} onError={(msg) => setLoadError(msg)} />
-              ) : (
+              {/* Render all PDFViewers but show/hide based on active tab */}
+              {tabs.map(tab => (
+                <div
+                  key={tab.id}
+                  className={tab.id === activeTabId ? 'block h-full' : 'hidden'}
+                >
+                  {tab.pdfData ? (
+                    <PDFViewer
+                      data={tab.pdfData}
+                      initialScrollPosition={tab.scrollPosition}
+                      initialScale={tab.scale}
+                      onScrollChange={(scrollTop) => updateTab(tab.id, { scrollPosition: scrollTop })}
+                      onScaleChange={(scale) => updateTab(tab.id, { scale })}
+                      onError={(msg) => updateTab(tab.id, { loadError: msg })}
+                    />
+                  ) : tab.isLoading ? (
+                    <div className="h-full flex flex-col items-center justify-center text-gray-500">
+                      <svg className="w-12 h-12 animate-spin mb-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      <p className="text-sm">Loading PDF...</p>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+
+              {/* Empty state when no tabs */}
+              {tabs.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-gray-500">
                   <svg
                     className="w-24 h-24 mb-4 text-gray-600"
@@ -352,19 +432,19 @@ function App() {
                     />
                   </svg>
                   <p className="text-lg mb-2">Drop a PDF file here</p>
-                  <p className="text-sm">or use File - Open</p>
+                  <p className="text-sm">or use File - Open (Cmd+O)</p>
                 </div>
               )}
 
               {/* Error display */}
-              {loadError && (
+              {activeTab?.loadError && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-900/90 text-red-200 px-4 py-2 rounded-lg shadow-lg text-sm flex items-center gap-2 max-w-md">
                   <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <span className="truncate">{loadError}</span>
+                  <span className="truncate">{activeTab.loadError}</span>
                   <button
-                    onClick={() => setLoadError(null)}
+                    onClick={() => updateTab(activeTab.id, { loadError: null })}
                     className="ml-2 p-1 hover:bg-red-800 rounded"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

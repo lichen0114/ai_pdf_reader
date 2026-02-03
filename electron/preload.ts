@@ -158,6 +158,11 @@ contextBridge.exposeInMainWorld('api', {
     return webUtils.getPathForFile(file)
   },
 
+  // File dialog
+  openFileDialog: (): Promise<string | null> => {
+    return ipcRenderer.invoke('file:openDialog')
+  },
+
   // Event Listeners
   onFileOpened: (callback: (filePath: string) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, filePath: string) => {
@@ -165,6 +170,14 @@ contextBridge.exposeInMainWorld('api', {
     }
     ipcRenderer.on('file-opened', handler)
     return () => ipcRenderer.removeListener('file-opened', handler)
+  },
+
+  onTabCloseRequested: (callback: () => void) => {
+    const handler = () => {
+      callback()
+    }
+    ipcRenderer.on('tab:close-current', handler)
+    return () => ipcRenderer.removeListener('tab:close-current', handler)
   },
 
   // Database - Documents

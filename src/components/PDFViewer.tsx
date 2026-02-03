@@ -8,6 +8,10 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl
 
 interface PDFViewerProps {
   data: ArrayBuffer
+  initialScrollPosition?: number
+  initialScale?: number
+  onScrollChange?: (scrollTop: number) => void
+  onScaleChange?: (scale: number) => void
   onError?: (message: string) => void
 }
 
@@ -16,10 +20,12 @@ const SCALE_MIN = 0.5
 const SCALE_MAX = 3.0
 const SCALE_STEP = 0.25
 
-function PDFViewer({ data, onError }: PDFViewerProps) {
+function PDFViewer({ data, initialScrollPosition, initialScale, onScrollChange, onScaleChange, onError }: PDFViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
-  const [scale, setScale] = useState(SCALE_DEFAULT)
+  const [scale, setScale] = useState(initialScale ?? SCALE_DEFAULT)
+  const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const initialScrollApplied = useRef(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
@@ -257,6 +263,43 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
       }
     }
   }, [pdf, totalPages, renderPage])
+
+  // Restore initial scroll position after first page renders
+  useEffect(() => {
+    if (!containerRef.current || !pdf || initialScrollApplied.current) return
+    if (initialScrollPosition && initialScrollPosition > 0 && renderedPages.size > 0) {
+      containerRef.current.scrollTop = initialScrollPosition
+      initialScrollApplied.current = true
+    }
+  }, [pdf, initialScrollPosition, renderedPages.size])
+
+  // Report scroll position changes (debounced)
+  useEffect(() => {
+    if (!containerRef.current || !onScrollChange) return
+
+    const container = containerRef.current
+    const handleScrollReport = () => {
+      if (scrollDebounceRef.current) {
+        clearTimeout(scrollDebounceRef.current)
+      }
+      scrollDebounceRef.current = setTimeout(() => {
+        onScrollChange(container.scrollTop)
+      }, 200)
+    }
+
+    container.addEventListener('scroll', handleScrollReport)
+    return () => {
+      container.removeEventListener('scroll', handleScrollReport)
+      if (scrollDebounceRef.current) {
+        clearTimeout(scrollDebounceRef.current)
+      }
+    }
+  }, [onScrollChange])
+
+  // Report scale changes
+  useEffect(() => {
+    onScaleChange?.(scale)
+  }, [scale, onScaleChange])
 
   // Re-render on scale change with CSS transform for smooth visual scaling
   useEffect(() => {
