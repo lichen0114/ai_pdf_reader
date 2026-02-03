@@ -132,6 +132,8 @@ The PDF viewer uses virtualized rendering (only visible pages + buffer are rende
 
 Parent container dimensions must be set explicitly when rendering pages (PDF.js uses absolute positioning inside the render target, which doesn't contribute to parent height).
 
+**Zoom scroll adjustment**: When scale changes, `scrollTop` must be adjusted proportionally (`scrollTop * newScale / prevScale`) to maintain the same viewport position. Without this, zooming in causes the view to shift because the same absolute `scrollTop` value now corresponds to content that was previously lower in the document.
+
 ## Path Aliases
 
 Configured in both `vite.config.ts` and `vitest.config.ts`:

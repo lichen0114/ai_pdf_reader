@@ -29,6 +29,9 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
   const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null)
   const loadingTaskRef = useRef<pdfjsLib.PDFDocumentLoadingTask | null>(null)
   const renderTasksRef = useRef<Map<number, pdfjsLib.RenderTask>>(new Map())
+  const scaleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const renderScaleRef = useRef(SCALE_DEFAULT)
+  const prevScaleRef = useRef(SCALE_DEFAULT)
 
   // Cancel all in-flight render tasks
   const cancelAllRenderTasks = useCallback(() => {
@@ -81,6 +84,7 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
           renderedPagesRef.current.clear()
           renderingRef.current.clear()
           pageRefs.current.clear()
+          renderScaleRef.current = scale
         } else {
           // If cancelled, destroy the loaded document
           pdfDoc.destroy()
@@ -254,24 +258,75 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
     }
   }, [pdf, totalPages, renderPage])
 
-  // Re-render on scale change
+  // Re-render on scale change with CSS transform for smooth visual scaling
   useEffect(() => {
     if (!pdf) return
 
-    // Cancel all in-flight render tasks before resetting
-    cancelAllRenderTasks()
+    const container = containerRef.current
+    if (!container) return
 
-    // Clear PDF.js content from render targets
-    for (const container of pageRefs.current.values()) {
-      container.innerHTML = ''
+    // Calculate the scale ratio between new and previous scale for scroll adjustment
+    const scaleRatio = scale / prevScaleRef.current
+
+    // Apply CSS transform for instant visual scaling during gesture
+    const transformScale = scale / renderScaleRef.current
+    for (const [, pageContainer] of pageRefs.current.entries()) {
+      pageContainer.style.transform = `scale(${transformScale})`
+      pageContainer.style.transformOrigin = 'top left'
+
+      // Update parent dimensions to match transformed size (prevents layout jumps)
+      const parentDiv = pageContainer.parentElement
+      if (parentDiv) {
+        const canvas = pageContainer.querySelector('canvas')
+        if (canvas) {
+          const baseWidth = parseFloat(canvas.style.width)
+          const baseHeight = parseFloat(canvas.style.height)
+          if (!isNaN(baseWidth) && !isNaN(baseHeight)) {
+            parentDiv.style.width = `${baseWidth * transformScale}px`
+            parentDiv.style.height = `${baseHeight * transformScale}px`
+          }
+        }
+      }
     }
 
-    setRenderedPages(new Set())
-    renderedPagesRef.current.clear()
+    // Adjust scroll position proportionally to maintain the same view
+    container.scrollTop = container.scrollTop * scaleRatio
 
-    // Re-render visible pages
-    setTimeout(handleScroll, 0)
-  }, [scale, cancelAllRenderTasks])
+    // Update previous scale for next change
+    prevScaleRef.current = scale
+
+    // Clear any pending debounce
+    if (scaleDebounceRef.current) {
+      clearTimeout(scaleDebounceRef.current)
+    }
+
+    // Debounce the actual re-render
+    scaleDebounceRef.current = setTimeout(() => {
+      // Skip re-render if scale hasn't changed significantly
+      if (Math.abs(scale - renderScaleRef.current) < 0.01) return
+
+      cancelAllRenderTasks()
+
+      // Clear PDF.js content and reset transforms
+      for (const container of pageRefs.current.values()) {
+        container.innerHTML = ''
+        container.style.transform = ''
+      }
+
+      renderScaleRef.current = scale
+      setRenderedPages(new Set())
+      renderedPagesRef.current.clear()
+
+      // Re-render visible pages
+      setTimeout(handleScroll, 0)
+    }, 150) // 150ms debounce
+
+    return () => {
+      if (scaleDebounceRef.current) {
+        clearTimeout(scaleDebounceRef.current)
+      }
+    }
+  }, [scale, pdf, cancelAllRenderTasks, handleScroll])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -288,6 +343,44 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
       pageRefs.current.clear()
     }
   }, [cancelAllRenderTasks])
+
+  // Pinch-to-zoom on trackpad (macOS sends wheel events with ctrlKey=true)
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault()
+        const delta = -e.deltaY * 0.01
+        setScale((prev) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, prev + delta)))
+      }
+    }
+
+    container.addEventListener('wheel', handleWheel, { passive: false })
+    return () => container.removeEventListener('wheel', handleWheel)
+  }, [])
+
+  // Keyboard shortcuts for zoom: Cmd/Ctrl + Plus/Minus/Zero
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === '=' || e.key === '+')) {
+        e.preventDefault()
+        setScale((prev) => Math.min(SCALE_MAX, prev + SCALE_STEP))
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '-') {
+        e.preventDefault()
+        setScale((prev) => Math.max(SCALE_MIN, prev - SCALE_STEP))
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '0') {
+        e.preventDefault()
+        setScale(SCALE_DEFAULT)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const zoomIn = () => setScale((s) => Math.min(s + SCALE_STEP, SCALE_MAX))
   const zoomOut = () => setScale((s) => Math.max(s - SCALE_STEP, SCALE_MIN))
