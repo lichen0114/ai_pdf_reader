@@ -88,6 +88,119 @@ export interface DocumentActivity {
   last_interaction_at: number
 }
 
+// Highlight types
+export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
+
+export interface Highlight {
+  id: string
+  document_id: string
+  page_number: number
+  start_offset: number
+  end_offset: number
+  selected_text: string
+  color: string
+  note: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface HighlightCreateInput {
+  document_id: string
+  page_number: number
+  start_offset: number
+  end_offset: number
+  selected_text: string
+  color?: HighlightColor
+  note?: string
+}
+
+export interface HighlightUpdateInput {
+  id: string
+  color?: HighlightColor
+  note?: string
+}
+
+// Bookmark types
+export interface Bookmark {
+  id: string
+  document_id: string
+  page_number: number
+  label: string | null
+  created_at: number
+}
+
+// Conversation types
+export interface Conversation {
+  id: string
+  document_id: string
+  highlight_id: string | null
+  selected_text: string
+  page_context: string | null
+  page_number: number | null
+  title: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface ConversationMessageDb {
+  id: string
+  conversation_id: string
+  role: 'user' | 'assistant'
+  content: string
+  action_type: string | null
+  created_at: number
+}
+
+export interface ConversationSummary {
+  id: string
+  document_id: string
+  selected_text: string
+  title: string | null
+  message_count: number
+  created_at: number
+  updated_at: number
+  last_message_preview: string | null
+}
+
+export interface ConversationWithMessages extends Conversation {
+  messages: ConversationMessageDb[]
+}
+
+// Search types
+export interface DocumentSearchResult {
+  id: string
+  filename: string
+  filepath: string
+  last_opened_at: number
+  rank: number
+}
+
+export interface InteractionSearchResult {
+  id: string
+  document_id: string
+  action_type: string
+  selected_text: string
+  response: string
+  page_number: number | null
+  created_at: number
+  filename: string
+  rank: number
+  snippet: string
+}
+
+export interface ConceptSearchResult {
+  id: string
+  name: string
+  created_at: number
+  rank: number
+}
+
+export interface SearchResults {
+  documents: DocumentSearchResult[]
+  interactions: InteractionSearchResult[]
+  concepts: ConceptSearchResult[]
+}
+
 contextBridge.exposeInMainWorld('api', {
   // AI Operations
   askAI: async (
@@ -266,5 +379,112 @@ contextBridge.exposeInMainWorld('api', {
 
   getAllReviewCards: (): Promise<ReviewCard[]> => {
     return ipcRenderer.invoke('db:review:all')
+  },
+
+  // Database - Highlights
+  createHighlight: (data: HighlightCreateInput): Promise<Highlight> => {
+    return ipcRenderer.invoke('db:highlights:create', data)
+  },
+
+  updateHighlight: (data: HighlightUpdateInput): Promise<Highlight | null> => {
+    return ipcRenderer.invoke('db:highlights:update', data)
+  },
+
+  deleteHighlight: (id: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:highlights:delete', id)
+  },
+
+  getHighlightsByDocument: (documentId: string): Promise<Highlight[]> => {
+    return ipcRenderer.invoke('db:highlights:byDocument', documentId)
+  },
+
+  getHighlightsByPage: (documentId: string, pageNumber: number): Promise<Highlight[]> => {
+    return ipcRenderer.invoke('db:highlights:byPage', { documentId, pageNumber })
+  },
+
+  getHighlightsWithNotes: (documentId: string): Promise<Highlight[]> => {
+    return ipcRenderer.invoke('db:highlights:withNotes', documentId)
+  },
+
+  // Database - Bookmarks
+  toggleBookmark: (data: { document_id: string; page_number: number; label?: string }): Promise<Bookmark | null> => {
+    return ipcRenderer.invoke('db:bookmarks:toggle', data)
+  },
+
+  updateBookmarkLabel: (id: string, label: string | null): Promise<boolean> => {
+    return ipcRenderer.invoke('db:bookmarks:updateLabel', { id, label })
+  },
+
+  deleteBookmark: (id: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:bookmarks:delete', id)
+  },
+
+  getBookmarksByDocument: (documentId: string): Promise<Bookmark[]> => {
+    return ipcRenderer.invoke('db:bookmarks:byDocument', documentId)
+  },
+
+  isPageBookmarked: (documentId: string, pageNumber: number): Promise<boolean> => {
+    return ipcRenderer.invoke('db:bookmarks:isPageBookmarked', { documentId, pageNumber })
+  },
+
+  // Database - Conversations
+  createConversation: (data: {
+    document_id: string
+    selected_text: string
+    highlight_id?: string
+    page_context?: string
+    page_number?: number
+    title?: string
+  }): Promise<Conversation> => {
+    return ipcRenderer.invoke('db:conversations:create', data)
+  },
+
+  addConversationMessage: (conversationId: string, role: 'user' | 'assistant', content: string, actionType?: string): Promise<ConversationMessageDb> => {
+    return ipcRenderer.invoke('db:conversations:addMessage', { conversationId, role, content, actionType })
+  },
+
+  updateConversationTitle: (id: string, title: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:conversations:updateTitle', { id, title })
+  },
+
+  deleteConversation: (id: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:conversations:delete', id)
+  },
+
+  getConversationsByDocument: (documentId: string): Promise<ConversationSummary[]> => {
+    return ipcRenderer.invoke('db:conversations:byDocument', documentId)
+  },
+
+  getConversationWithMessages: (id: string): Promise<ConversationWithMessages | null> => {
+    return ipcRenderer.invoke('db:conversations:getWithMessages', id)
+  },
+
+  getRecentConversations: (limit?: number): Promise<ConversationSummary[]> => {
+    return ipcRenderer.invoke('db:conversations:recent', limit)
+  },
+
+  getConversationMessages: (conversationId: string): Promise<ConversationMessageDb[]> => {
+    return ipcRenderer.invoke('db:conversations:messages', conversationId)
+  },
+
+  // Search
+  searchDocuments: (query: string, limit?: number): Promise<DocumentSearchResult[]> => {
+    return ipcRenderer.invoke('search:documents', { query, limit })
+  },
+
+  searchInteractions: (query: string, limit?: number): Promise<InteractionSearchResult[]> => {
+    return ipcRenderer.invoke('search:interactions', { query, limit })
+  },
+
+  searchConcepts: (query: string, limit?: number): Promise<ConceptSearchResult[]> => {
+    return ipcRenderer.invoke('search:concepts', { query, limit })
+  },
+
+  searchAll: (query: string, limitPerType?: number): Promise<SearchResults> => {
+    return ipcRenderer.invoke('search:all', { query, limitPerType })
+  },
+
+  searchInteractionsInDocument: (documentId: string, query: string, limit?: number): Promise<InteractionSearchResult[]> => {
+    return ipcRenderer.invoke('search:interactionsInDocument', { documentId, query, limit })
   },
 })

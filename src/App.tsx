@@ -21,6 +21,10 @@ import { useUIMode } from './hooks/useUIMode'
 import { useEquationEngine } from './hooks/useEquationEngine'
 import { useCodeSandbox } from './hooks/useCodeSandbox'
 import { useConceptStack } from './hooks/useConceptStack'
+import { useHighlights } from './hooks/useHighlights'
+import { useBookmarks } from './hooks/useBookmarks'
+import BookmarksList from './components/highlights/BookmarksList'
+import SearchModal from './components/search/SearchModal'
 
 type AppView = 'dashboard' | 'reader'
 
@@ -56,10 +60,28 @@ function AppContent() {
     response: string
   } | null>(null)
 
-  const { selectedText, pageContext, selectionRect, clearSelection } = useSelection()
+  const { selectedText, pageContext, selectionRect, pageNumber, startOffset, endOffset, clearSelection } = useSelection()
   const { response, isLoading, error, askAI, clearResponse } = useAI()
-  const { conversation, startConversation, addMessage, appendToLastAssistantMessage, clearConversation } = useConversation()
+  const {
+    conversationId,
+    conversation,
+    conversations,
+    startConversation,
+    loadConversation,
+    listConversations,
+    addMessage,
+    appendToLastAssistantMessage,
+    clearConversation,
+    deleteConversation,
+  } = useConversation()
   const { history, addEntry, getEntry } = useHistory()
+
+  // Load conversations when document changes
+  useEffect(() => {
+    if (activeTab?.documentId) {
+      listConversations(activeTab.documentId)
+    }
+  }, [activeTab?.documentId, listConversations])
 
   // Equation engine
   const equationEngine = useEquationEngine({
@@ -78,6 +100,57 @@ function AppContent() {
     onSimulationStart: () => enterSimulation('explainer'),
     onSimulationEnd: exitSimulation,
   })
+
+  // Highlights and bookmarks
+  const {
+    highlights,
+    createHighlight,
+    updateHighlight,
+    deleteHighlight,
+  } = useHighlights(activeTab?.documentId || null)
+
+  const {
+    bookmarks,
+    toggleBookmark,
+    deleteBookmark,
+  } = useBookmarks(activeTab?.documentId || null)
+
+  const [isBookmarksOpen, setIsBookmarksOpen] = useState(false)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
+
+  // Create Set from bookmarks for efficient lookup
+  const bookmarkedPages = new Set(bookmarks.map(b => b.page_number))
+
+  // Handle creating a highlight from selected text
+  const handleCreateHighlight = useCallback(async (color: HighlightColor) => {
+    if (!selectedText || pageNumber === null || startOffset === null || endOffset === null) {
+      return
+    }
+    await createHighlight(pageNumber, startOffset, endOffset, selectedText, color)
+    clearSelection()
+  }, [selectedText, pageNumber, startOffset, endOffset, createHighlight, clearSelection])
+
+  // Handle bookmark click from bookmark list
+  const handleBookmarkClick = useCallback((_bookmarkPageNumber: number) => {
+    // Close bookmarks panel and navigate
+    setIsBookmarksOpen(false)
+    // TODO: Add ref to PDFViewer to call goToPage
+  }, [])
+
+  // Handle zone click in investigate mode
+  const handleZoneClick = useCallback((zone: import('./types/modes').InteractiveZone) => {
+    switch (zone.type) {
+      case 'equation':
+        equationEngine.openEquation(zone.content)
+        break
+      case 'code':
+        codeSandbox.openSandbox(zone.content)
+        break
+      case 'term':
+        conceptStack.pushCard(zone.content)
+        break
+    }
+  }, [equationEngine, codeSandbox, conceptStack])
 
   const handleKeyChange = useCallback(() => {
     setProviderRefreshKey(k => k + 1)
@@ -171,6 +244,18 @@ function AppContent() {
         }
       }
 
+      // Cmd+F for search (current PDF)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f' && !e.shiftKey) {
+        e.preventDefault()
+        setIsSearchOpen(true)
+      }
+
+      // Cmd+Shift+F for search all
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'f') {
+        e.preventDefault()
+        setIsSearchOpen(true)
+      }
+
       // Tab navigation shortcuts (only in reader view with tabs)
       if (currentView === 'reader' && tabs.length > 0) {
         // Cmd+Shift+[ for previous tab
@@ -210,15 +295,23 @@ function AppContent() {
     setCurrentAction(action)
     clearResponse()
     clearConversation()
-    startConversation(selectedText, pageContext || '')
+
+    // Start persistent conversation if we have a documentId
+    const documentId = activeTab?.documentId
+    if (documentId) {
+      await startConversation(selectedText, pageContext || '', documentId)
+    } else {
+      // Fall back to in-memory conversation
+      await startConversation(selectedText, pageContext || '', '')
+    }
 
     // Add initial user message and empty assistant message for streaming
     const userMessage = selectedText
-    addMessage('user', userMessage)
-    addMessage('assistant', '')
+    await addMessage('user', userMessage, action)
+    await addMessage('assistant', '')
 
     await askAI(selectedText, pageContext, action)
-  }, [selectedText, pageContext, askAI, clearResponse, clearConversation, startConversation, addMessage])
+  }, [selectedText, pageContext, askAI, clearResponse, clearConversation, startConversation, addMessage, activeTab?.documentId])
 
   // Update conversation when response streams in
   useEffect(() => {
@@ -332,8 +425,8 @@ function AppContent() {
     if (!conversation || isLoading) return
 
     // Add the follow-up question and empty assistant response
-    addMessage('user', followUpText)
-    addMessage('assistant', '')
+    await addMessage('user', followUpText)
+    await addMessage('assistant', '')
 
     // Build conversation history including the new follow-up
     const historyWithFollowUp = [
@@ -350,15 +443,26 @@ function AppContent() {
     )
   }, [conversation, isLoading, addMessage, clearResponse, askAI, currentAction])
 
-  const handleHistorySelect = useCallback((entry: ReturnType<typeof getEntry>) => {
+  const handleConversationSelect = useCallback(async (id: string) => {
+    setIsPanelOpen(true)
+    clearResponse()
+    await loadConversation(id)
+  }, [clearResponse, loadConversation])
+
+  const handleNewConversation = useCallback(() => {
+    clearResponse()
+    clearConversation()
+  }, [clearResponse, clearConversation])
+
+  const handleHistorySelect = useCallback(async (entry: ReturnType<typeof getEntry>) => {
     if (!entry) return
     // Restore the history entry view
     setCurrentAction(entry.action)
     clearResponse()
     clearConversation()
-    startConversation(entry.selectedText, '')
-    addMessage('user', entry.selectedText)
-    addMessage('assistant', entry.response)
+    await startConversation(entry.selectedText, '', '')
+    await addMessage('user', entry.selectedText)
+    await addMessage('assistant', entry.response)
   }, [clearResponse, clearConversation, startConversation, addMessage])
 
   const handleClosePanel = () => {
@@ -454,6 +558,33 @@ function AppContent() {
         )}
 
         <div className="flex items-center gap-2">
+          {/* Search button */}
+          <button
+            onClick={() => setIsSearchOpen(true)}
+            className="p-1.5 rounded hover:bg-gray-700/50 text-gray-400 hover:text-gray-200 transition-colors"
+            title="Search (Cmd+F)"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
+
+          {/* Bookmarks button - only show in reader view */}
+          {currentView === 'reader' && activeTab && (
+            <button
+              onClick={() => setIsBookmarksOpen(!isBookmarksOpen)}
+              className={`p-1.5 rounded transition-colors ${
+                isBookmarksOpen
+                  ? 'bg-yellow-600/30 text-yellow-400'
+                  : 'hover:bg-gray-700/50 text-gray-400 hover:text-gray-200'
+              }`}
+              title="Bookmarks"
+            >
+              <svg className="w-5 h-5" fill={isBookmarksOpen ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </button>
+          )}
           <ProviderSwitcher onSettingsClick={() => setIsSettingsOpen(true)} refreshKey={providerRefreshKey} />
         </div>
       </div>
@@ -495,6 +626,13 @@ function AppContent() {
                       onScrollChange={(scrollTop) => updateTab(tab.id, { scrollPosition: scrollTop })}
                       onScaleChange={(scale) => updateTab(tab.id, { scale })}
                       onError={(msg) => updateTab(tab.id, { loadError: msg })}
+                      highlights={tab.id === activeTabId ? highlights : []}
+                      onUpdateHighlight={tab.id === activeTabId ? updateHighlight : undefined}
+                      onDeleteHighlight={tab.id === activeTabId ? deleteHighlight : undefined}
+                      bookmarkedPages={tab.id === activeTabId ? bookmarkedPages : new Set()}
+                      onToggleBookmark={tab.id === activeTabId ? toggleBookmark : undefined}
+                      mode={tab.id === activeTabId ? mode : 'reading'}
+                      onZoneClick={tab.id === activeTabId ? handleZoneClick : undefined}
                     />
                   ) : tab.isLoading ? (
                     <div className="h-full flex flex-col items-center justify-center text-gray-500">
@@ -555,6 +693,7 @@ function AppContent() {
                 onEquationClick={equationEngine.openEquation}
                 onCodeClick={codeSandbox.openSandbox}
                 onExplainerClick={conceptStack.pushCard}
+                onHighlight={handleCreateHighlight}
                 isVisible={!!selectedText && !isPanelOpen && !equationEngine.isOpen && !codeSandbox.isOpen && !conceptStack.isOpen}
               />
             </div>
@@ -572,6 +711,21 @@ function AppContent() {
               history={history}
               onHistorySelect={handleHistorySelect}
               currentAction={currentAction}
+              conversationId={conversationId}
+              conversations={conversations}
+              onConversationSelect={handleConversationSelect}
+              onConversationDelete={deleteConversation}
+              onNewConversation={handleNewConversation}
+            />
+
+            {/* Bookmarks list panel */}
+            <BookmarksList
+              isOpen={isBookmarksOpen}
+              bookmarks={bookmarks}
+              currentPage={1}
+              onBookmarkClick={handleBookmarkClick}
+              onBookmarkDelete={deleteBookmark}
+              onClose={() => setIsBookmarksOpen(false)}
             />
           </>
         )}
@@ -582,6 +736,14 @@ function AppContent() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         onKeyChange={handleKeyChange}
+      />
+
+      {/* Search modal */}
+      <SearchModal
+        isOpen={isSearchOpen}
+        documentId={activeTab?.documentId}
+        onClose={() => setIsSearchOpen(false)}
+        onOpenDocument={handleOpenDocument}
       />
 
       {/* Mode indicator - only in reader view */}

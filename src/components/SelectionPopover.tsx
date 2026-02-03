@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { ActionType } from '../hooks/useHistory'
 import {
   containsLatex,
@@ -7,6 +7,7 @@ import {
   getSelectionContentType,
   type SelectionContentType,
 } from '../services/contentDetector'
+import HighlightColorPicker from './highlights/HighlightColorPicker'
 
 interface SelectionToolbarProps {
   selectionRect: DOMRect | null
@@ -15,6 +16,7 @@ interface SelectionToolbarProps {
   onEquationClick?: (latex: string) => void
   onCodeClick?: (code: string) => void
   onExplainerClick?: (term: string) => void
+  onHighlight?: (color: HighlightColor) => void
   isVisible: boolean
 }
 
@@ -49,8 +51,12 @@ export default function SelectionPopover({
   onEquationClick,
   onCodeClick,
   onExplainerClick,
+  onHighlight,
   isVisible,
 }: SelectionToolbarProps) {
+  const [showColorPicker, setShowColorPicker] = useState(false)
+  const [selectedColor, setSelectedColor] = useState<HighlightColor>('yellow')
+
   // Detect content type
   const contentType = useMemo<SelectionContentType>(() => {
     if (!selectedText) return 'general'
@@ -70,10 +76,28 @@ export default function SelectionPopover({
 
   if (!isVisible || !selectionRect) return null
 
+  const handleHighlightClick = () => {
+    if (showColorPicker) {
+      // Second click - apply highlight with selected color
+      onHighlight?.(selectedColor)
+      setShowColorPicker(false)
+    } else {
+      // First click - show color picker
+      setShowColorPicker(true)
+    }
+  }
+
+  const handleColorSelect = (color: HighlightColor) => {
+    setSelectedColor(color)
+    onHighlight?.(color)
+    setShowColorPicker(false)
+  }
+
   // Calculate toolbar width based on content
   const baseWidth = 280
   const stemWidth = hasStemActions ? 120 : 0
-  const toolbarWidth = baseWidth + stemWidth
+  const highlightWidth = onHighlight ? (showColorPicker ? 140 : 45) : 0
+  const toolbarWidth = baseWidth + stemWidth + highlightWidth
   const toolbarHeight = 40
   const padding = 8
   const gap = 8
@@ -100,6 +124,32 @@ export default function SelectionPopover({
         top: `${top}px`,
       }}
     >
+      {/* Highlight action */}
+      {onHighlight && (
+        <>
+          {showColorPicker ? (
+            <div className="flex items-center px-2">
+              <HighlightColorPicker
+                selectedColor={selectedColor}
+                onColorSelect={handleColorSelect}
+                compact
+              />
+            </div>
+          ) : (
+            <button
+              onClick={handleHighlightClick}
+              className="p-2 text-gray-200 hover:bg-gray-700/60 rounded-full transition-colors"
+              title="Highlight"
+            >
+              <svg className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M15.5 14.5l-2.3-2.3 7.5-7.5 2.3 2.3-7.5 7.5zm-11-2l9-9 2.3 2.3-9 9H4.5v-2.3z" />
+              </svg>
+            </button>
+          )}
+          <Divider />
+        </>
+      )}
+
       {/* Standard actions */}
       <ToolbarButton
         icon={

@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import QuoteCard from './QuoteCard'
 import HistoryPanel from './HistoryPanel'
+import ConversationPicker from './conversation/ConversationPicker'
 import type { HistoryEntry, ActionType } from '../hooks/useHistory'
 import type { Message } from '../hooks/useConversation'
 
@@ -18,6 +19,12 @@ interface ResponsePanelProps {
   history: HistoryEntry[]
   onHistorySelect: (entry: HistoryEntry) => void
   currentAction?: ActionType
+  // Conversation props
+  conversationId?: string | null
+  conversations?: ConversationSummary[]
+  onConversationSelect?: (id: string) => void
+  onConversationDelete?: (id: string) => void
+  onNewConversation?: () => void
 }
 
 function ResponsePanel({
@@ -32,10 +39,16 @@ function ResponsePanel({
   history,
   onHistorySelect,
   currentAction,
+  conversationId,
+  conversations = [],
+  onConversationSelect,
+  onConversationDelete,
+  onNewConversation,
 }: ResponsePanelProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const [followUpText, setFollowUpText] = useState('')
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
+  const [isConversationsOpen, setIsConversationsOpen] = useState(false)
 
   // Auto-scroll to bottom as response streams in
   useEffect(() => {
@@ -113,6 +126,17 @@ function ResponsePanel({
           )}
         </div>
         <div className="flex items-center gap-1">
+          {onConversationSelect && conversations.length > 0 && (
+            <button
+              onClick={() => setIsConversationsOpen(true)}
+              className="p-1.5 rounded hover:bg-gray-700/50 text-gray-400 hover:text-gray-200 transition-colors"
+              title="Conversations"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
+              </svg>
+            </button>
+          )}
           <button
             onClick={() => setIsHistoryOpen(true)}
             className="p-1.5 rounded hover:bg-gray-700/50 text-gray-400 hover:text-gray-200 transition-colors"
@@ -245,6 +269,19 @@ function ResponsePanel({
         onSelect={handleHistorySelect}
         onClose={() => setIsHistoryOpen(false)}
       />
+
+      {/* Conversations overlay */}
+      {onConversationSelect && onConversationDelete && onNewConversation && (
+        <ConversationPicker
+          isOpen={isConversationsOpen}
+          conversations={conversations}
+          activeId={conversationId ?? null}
+          onSelect={onConversationSelect}
+          onDelete={onConversationDelete}
+          onNewConversation={onNewConversation}
+          onClose={() => setIsConversationsOpen(false)}
+        />
+      )}
     </aside>
   )
 }

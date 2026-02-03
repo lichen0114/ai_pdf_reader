@@ -8,6 +8,10 @@ import * as documentsDb from './database/queries/documents'
 import * as interactionsDb from './database/queries/interactions'
 import * as conceptsDb from './database/queries/concepts'
 import * as reviewsDb from './database/queries/reviews'
+import * as highlightsDb from './database/queries/highlights'
+import * as bookmarksDb from './database/queries/bookmarks'
+import * as conversationsDb from './database/queries/conversations'
+import * as searchDb from './database/queries/search'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -279,6 +283,106 @@ function setupIPC() {
 
   ipcMain.handle('db:review:all', () => {
     return reviewsDb.getAllReviewCards()
+  })
+
+  // Database operations - Highlights
+  ipcMain.handle('db:highlights:create', (_event, data: highlightsDb.HighlightCreateInput) => {
+    return highlightsDb.createHighlight(data)
+  })
+
+  ipcMain.handle('db:highlights:update', (_event, data: highlightsDb.HighlightUpdateInput) => {
+    return highlightsDb.updateHighlight(data)
+  })
+
+  ipcMain.handle('db:highlights:delete', (_event, id: string) => {
+    return highlightsDb.deleteHighlight(id)
+  })
+
+  ipcMain.handle('db:highlights:byDocument', (_event, documentId: string) => {
+    return highlightsDb.getHighlightsByDocument(documentId)
+  })
+
+  ipcMain.handle('db:highlights:byPage', (_event, { documentId, pageNumber }: { documentId: string; pageNumber: number }) => {
+    return highlightsDb.getHighlightsByPage(documentId, pageNumber)
+  })
+
+  ipcMain.handle('db:highlights:withNotes', (_event, documentId: string) => {
+    return highlightsDb.getHighlightsWithNotes(documentId)
+  })
+
+  // Database operations - Bookmarks
+  ipcMain.handle('db:bookmarks:toggle', (_event, data: bookmarksDb.BookmarkCreateInput) => {
+    return bookmarksDb.toggleBookmark(data)
+  })
+
+  ipcMain.handle('db:bookmarks:updateLabel', (_event, { id, label }: { id: string; label: string | null }) => {
+    return bookmarksDb.updateBookmarkLabel(id, label)
+  })
+
+  ipcMain.handle('db:bookmarks:delete', (_event, id: string) => {
+    return bookmarksDb.deleteBookmark(id)
+  })
+
+  ipcMain.handle('db:bookmarks:byDocument', (_event, documentId: string) => {
+    return bookmarksDb.getBookmarksByDocument(documentId)
+  })
+
+  ipcMain.handle('db:bookmarks:isPageBookmarked', (_event, { documentId, pageNumber }: { documentId: string; pageNumber: number }) => {
+    return bookmarksDb.isPageBookmarked(documentId, pageNumber)
+  })
+
+  // Database operations - Conversations
+  ipcMain.handle('db:conversations:create', (_event, data: conversationsDb.ConversationCreateInput) => {
+    return conversationsDb.createConversation(data)
+  })
+
+  ipcMain.handle('db:conversations:addMessage', (_event, { conversationId, role, content, actionType }: { conversationId: string; role: 'user' | 'assistant'; content: string; actionType?: string }) => {
+    return conversationsDb.addMessage(conversationId, role, content, actionType)
+  })
+
+  ipcMain.handle('db:conversations:updateTitle', (_event, { id, title }: { id: string; title: string }) => {
+    return conversationsDb.updateConversationTitle(id, title)
+  })
+
+  ipcMain.handle('db:conversations:delete', (_event, id: string) => {
+    return conversationsDb.deleteConversation(id)
+  })
+
+  ipcMain.handle('db:conversations:byDocument', (_event, documentId: string) => {
+    return conversationsDb.getConversationsByDocument(documentId)
+  })
+
+  ipcMain.handle('db:conversations:getWithMessages', (_event, id: string) => {
+    return conversationsDb.getConversationWithMessages(id)
+  })
+
+  ipcMain.handle('db:conversations:recent', (_event, limit = 10) => {
+    return conversationsDb.getRecentConversations(limit)
+  })
+
+  ipcMain.handle('db:conversations:messages', (_event, conversationId: string) => {
+    return conversationsDb.getConversationMessages(conversationId)
+  })
+
+  // Search operations
+  ipcMain.handle('search:documents', (_event, { query, limit }: { query: string; limit?: number }) => {
+    return searchDb.searchDocuments(query, limit)
+  })
+
+  ipcMain.handle('search:interactions', (_event, { query, limit }: { query: string; limit?: number }) => {
+    return searchDb.searchInteractions(query, limit)
+  })
+
+  ipcMain.handle('search:concepts', (_event, { query, limit }: { query: string; limit?: number }) => {
+    return searchDb.searchConcepts(query, limit)
+  })
+
+  ipcMain.handle('search:all', (_event, { query, limitPerType }: { query: string; limitPerType?: number }) => {
+    return searchDb.searchAll(query, limitPerType)
+  })
+
+  ipcMain.handle('search:interactionsInDocument', (_event, { documentId, query, limit }: { documentId: string; query: string; limit?: number }) => {
+    return searchDb.searchInteractionsInDocument(documentId, query, limit)
   })
 
   // Concept extraction using current AI provider

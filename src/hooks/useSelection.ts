@@ -5,6 +5,8 @@ interface SelectionState {
   pageContext: string
   pageNumber: number | null
   selectionRect: DOMRect | null
+  startOffset: number | null
+  endOffset: number | null
 }
 
 export function useSelection() {
@@ -13,6 +15,8 @@ export function useSelection() {
     pageContext: '',
     pageNumber: null,
     selectionRect: null,
+    startOffset: null,
+    endOffset: null,
   })
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
@@ -51,12 +55,19 @@ export function useSelection() {
       // Get surrounding context
       let context = ''
       let pageNumber: number | null = null
+      let startOffset: number | null = null
+      let endOffset: number | null = null
 
       if (pageElement) {
         // Get all text from the text layer
         const textLayer = pageElement.querySelector('.textLayer')
         if (textLayer) {
           context = textLayer.textContent?.slice(0, 2000) || ''
+
+          // Calculate character offsets within the text layer
+          const offsets = calculateOffsets(textLayer, range)
+          startOffset = offsets.start
+          endOffset = offsets.end
         }
 
         // Try to get page number from data attribute
@@ -80,6 +91,8 @@ export function useSelection() {
         pageContext: context,
         pageNumber,
         selectionRect,
+        startOffset,
+        endOffset,
       })
     }, 300)
   }, [])
@@ -100,6 +113,8 @@ export function useSelection() {
       pageContext: '',
       pageNumber: null,
       selectionRect: null,
+      startOffset: null,
+      endOffset: null,
     })
     window.getSelection()?.removeAllRanges()
   }, [])
@@ -121,6 +136,61 @@ export function useSelection() {
     pageContext: state.pageContext,
     pageNumber: state.pageNumber,
     selectionRect: state.selectionRect,
+    startOffset: state.startOffset,
+    endOffset: state.endOffset,
     clearSelection,
   }
+}
+
+// Calculate character offsets of selection within text layer
+function calculateOffsets(textLayer: Element, range: Range): { start: number; end: number } {
+  let start = 0
+  let end = 0
+  let currentOffset = 0
+  let foundStart = false
+  let foundEnd = false
+
+  const spans = textLayer.querySelectorAll('span')
+
+  for (const span of spans) {
+    const text = span.textContent || ''
+    const spanLength = text.length
+
+    // Check if range starts in this span
+    if (!foundStart && range.startContainer === span.firstChild) {
+      start = currentOffset + range.startOffset
+      foundStart = true
+    } else if (!foundStart && span.contains(range.startContainer)) {
+      // Range starts in a nested element
+      start = currentOffset + range.startOffset
+      foundStart = true
+    }
+
+    // Check if range ends in this span
+    if (!foundEnd && range.endContainer === span.firstChild) {
+      end = currentOffset + range.endOffset
+      foundEnd = true
+    } else if (!foundEnd && span.contains(range.endContainer)) {
+      // Range ends in a nested element
+      end = currentOffset + range.endOffset
+      foundEnd = true
+    }
+
+    if (foundStart && foundEnd) break
+    currentOffset += spanLength
+  }
+
+  // If we couldn't find the offsets precisely, estimate from the selected text
+  if (!foundStart || !foundEnd) {
+    const fullText = textLayer.textContent || ''
+    const selectedText = range.toString()
+    const searchStart = start || 0
+    const foundIndex = fullText.indexOf(selectedText, searchStart)
+    if (foundIndex !== -1) {
+      start = foundIndex
+      end = foundIndex + selectedText.length
+    }
+  }
+
+  return { start, end }
 }

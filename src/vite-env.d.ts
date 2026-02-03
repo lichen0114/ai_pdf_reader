@@ -82,6 +82,119 @@ interface DocumentActivity {
   last_interaction_at: number
 }
 
+// Highlight types
+type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
+
+interface Highlight {
+  id: string
+  document_id: string
+  page_number: number
+  start_offset: number
+  end_offset: number
+  selected_text: string
+  color: string
+  note: string | null
+  created_at: number
+  updated_at: number
+}
+
+interface HighlightCreateInput {
+  document_id: string
+  page_number: number
+  start_offset: number
+  end_offset: number
+  selected_text: string
+  color?: HighlightColor
+  note?: string
+}
+
+interface HighlightUpdateInput {
+  id: string
+  color?: HighlightColor
+  note?: string
+}
+
+// Bookmark types
+interface Bookmark {
+  id: string
+  document_id: string
+  page_number: number
+  label: string | null
+  created_at: number
+}
+
+// Conversation types
+interface ConversationDb {
+  id: string
+  document_id: string
+  highlight_id: string | null
+  selected_text: string
+  page_context: string | null
+  page_number: number | null
+  title: string | null
+  created_at: number
+  updated_at: number
+}
+
+interface ConversationMessageDb {
+  id: string
+  conversation_id: string
+  role: 'user' | 'assistant'
+  content: string
+  action_type: string | null
+  created_at: number
+}
+
+interface ConversationSummary {
+  id: string
+  document_id: string
+  selected_text: string
+  title: string | null
+  message_count: number
+  created_at: number
+  updated_at: number
+  last_message_preview: string | null
+}
+
+interface ConversationWithMessages extends ConversationDb {
+  messages: ConversationMessageDb[]
+}
+
+// Search types
+interface DocumentSearchResult {
+  id: string
+  filename: string
+  filepath: string
+  last_opened_at: number
+  rank: number
+}
+
+interface InteractionSearchResult {
+  id: string
+  document_id: string
+  action_type: string
+  selected_text: string
+  response: string
+  page_number: number | null
+  created_at: number
+  filename: string
+  rank: number
+  snippet: string
+}
+
+interface ConceptSearchResult {
+  id: string
+  name: string
+  created_at: number
+  rank: number
+}
+
+interface SearchResults {
+  documents: DocumentSearchResult[]
+  interactions: InteractionSearchResult[]
+  concepts: ConceptSearchResult[]
+}
+
 interface Window {
   api: {
     askAI: (
@@ -136,5 +249,40 @@ interface Window {
     createReviewCard: (data: { interaction_id: string; question: string; answer: string }) => Promise<ReviewCard>
     getDueReviewCount: () => Promise<number>
     getAllReviewCards: () => Promise<ReviewCard[]>
+    // Database - Highlights
+    createHighlight: (data: HighlightCreateInput) => Promise<Highlight>
+    updateHighlight: (data: HighlightUpdateInput) => Promise<Highlight | null>
+    deleteHighlight: (id: string) => Promise<boolean>
+    getHighlightsByDocument: (documentId: string) => Promise<Highlight[]>
+    getHighlightsByPage: (documentId: string, pageNumber: number) => Promise<Highlight[]>
+    getHighlightsWithNotes: (documentId: string) => Promise<Highlight[]>
+    // Database - Bookmarks
+    toggleBookmark: (data: { document_id: string; page_number: number; label?: string }) => Promise<Bookmark | null>
+    updateBookmarkLabel: (id: string, label: string | null) => Promise<boolean>
+    deleteBookmark: (id: string) => Promise<boolean>
+    getBookmarksByDocument: (documentId: string) => Promise<Bookmark[]>
+    isPageBookmarked: (documentId: string, pageNumber: number) => Promise<boolean>
+    // Database - Conversations
+    createConversation: (data: {
+      document_id: string
+      selected_text: string
+      highlight_id?: string
+      page_context?: string
+      page_number?: number
+      title?: string
+    }) => Promise<ConversationDb>
+    addConversationMessage: (conversationId: string, role: 'user' | 'assistant', content: string, actionType?: string) => Promise<ConversationMessageDb>
+    updateConversationTitle: (id: string, title: string) => Promise<boolean>
+    deleteConversation: (id: string) => Promise<boolean>
+    getConversationsByDocument: (documentId: string) => Promise<ConversationSummary[]>
+    getConversationWithMessages: (id: string) => Promise<ConversationWithMessages | null>
+    getRecentConversations: (limit?: number) => Promise<ConversationSummary[]>
+    getConversationMessages: (conversationId: string) => Promise<ConversationMessageDb[]>
+    // Search
+    searchDocuments: (query: string, limit?: number) => Promise<DocumentSearchResult[]>
+    searchInteractions: (query: string, limit?: number) => Promise<InteractionSearchResult[]>
+    searchConcepts: (query: string, limit?: number) => Promise<ConceptSearchResult[]>
+    searchAll: (query: string, limitPerType?: number) => Promise<SearchResults>
+    searchInteractionsInDocument: (documentId: string, query: string, limit?: number) => Promise<InteractionSearchResult[]>
   }
 }

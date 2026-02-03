@@ -1,10 +1,28 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import { TextLayer } from 'pdfjs-dist'
 import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import HighlightLayer from './highlights/HighlightLayer'
+import BookmarkIndicator from './highlights/BookmarkIndicator'
+import InteractiveZoneOverlay from './modes/InteractiveZoneOverlay'
+import type { HighlightData } from '../hooks/useHighlights'
+import { useContentDetection } from '../hooks/useContentDetection'
+import type { InteractiveZone, UIMode } from '../types/modes'
 
 // Set worker source using Vite's ?url import for reliable path resolution
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl
+
+export interface TextLayerInfo {
+  container: HTMLElement
+  textContent: string
+  scale: number
+}
+
+export interface PDFViewerRef {
+  goToPage: (page: number) => void
+  getCurrentPage: () => number
+  getTextLayerInfo: (pageNumber: number) => TextLayerInfo | null
+}
 
 interface PDFViewerProps {
   data: ArrayBuffer
@@ -13,6 +31,14 @@ interface PDFViewerProps {
   onScrollChange?: (scrollTop: number) => void
   onScaleChange?: (scale: number) => void
   onError?: (message: string) => void
+  highlights?: HighlightData[]
+  onUpdateHighlight?: (id: string, updates: { color?: HighlightColor; note?: string }) => void
+  onDeleteHighlight?: (id: string) => void
+  bookmarkedPages?: Set<number>
+  onToggleBookmark?: (pageNumber: number) => void
+  // Investigate mode
+  mode?: UIMode
+  onZoneClick?: (zone: InteractiveZone) => void
 }
 
 const SCALE_DEFAULT = 1.5
@@ -20,7 +46,21 @@ const SCALE_MIN = 0.5
 const SCALE_MAX = 3.0
 const SCALE_STEP = 0.25
 
-function PDFViewer({ data, initialScrollPosition, initialScale, onScrollChange, onScaleChange, onError }: PDFViewerProps) {
+const PDFViewerInner = forwardRef<PDFViewerRef, PDFViewerProps>(function PDFViewer({
+  data,
+  initialScrollPosition,
+  initialScale,
+  onScrollChange,
+  onScaleChange,
+  onError,
+  highlights = [],
+  onUpdateHighlight,
+  onDeleteHighlight,
+  bookmarkedPages = new Set(),
+  onToggleBookmark,
+  mode = 'reading',
+  onZoneClick,
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [scale, setScale] = useState(initialScale ?? SCALE_DEFAULT)
@@ -30,6 +70,8 @@ function PDFViewer({ data, initialScrollPosition, initialScale, onScrollChange, 
   const [totalPages, setTotalPages] = useState(0)
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const textLayerRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const textContentCache = useRef<Map<number, string>>(new Map())
   const renderingRef = useRef<Set<number>>(new Set())
   const renderedPagesRef = useRef<Set<number>>(new Set())
   const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null)
@@ -38,6 +80,31 @@ function PDFViewer({ data, initialScrollPosition, initialScale, onScrollChange, 
   const scaleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const renderScaleRef = useRef(SCALE_DEFAULT)
   const prevScaleRef = useRef(SCALE_DEFAULT)
+  const pdfContainerRef = useRef<HTMLDivElement>(null)
+
+  // Content detection for investigate mode
+  const isInvestigateMode = mode === 'investigate'
+  const {
+    zones,
+    detectPageContent,
+    updateZoneBounds,
+    clearAll: clearContentDetection,
+  } = useContentDetection({ enabled: isInvestigateMode })
+
+  // Expose methods via ref
+  useImperativeHandle(ref, () => ({
+    goToPage: (page: number) => goToPage(page),
+    getCurrentPage: () => currentPage,
+    getTextLayerInfo: (pageNumber: number): TextLayerInfo | null => {
+      const textLayer = textLayerRefs.current.get(pageNumber)
+      if (!textLayer) return null
+      return {
+        container: textLayer,
+        textContent: textContentCache.current.get(pageNumber) || '',
+        scale,
+      }
+    },
+  }))
 
   // Cancel all in-flight render tasks
   const cancelAllRenderTasks = useCallback(() => {
@@ -179,6 +246,20 @@ function PDFViewer({ data, initialScrollPosition, initialScale, onScrollChange, 
         })
         await textLayerInstance.render()
 
+        // Store text layer reference and text content for highlights
+        textLayerRefs.current.set(pageNum, textLayer)
+        const fullText = textContent.items.map((item: any) => item.str || '').join('')
+        textContentCache.current.set(pageNum, fullText)
+
+        // Run content detection for investigate mode
+        if (isInvestigateMode) {
+          detectPageContent(pageNum, fullText)
+          // Defer zone bounds update to allow text layer layout
+          requestAnimationFrame(() => {
+            updateZoneBounds(pageNum, textLayer)
+          })
+        }
+
         // Update ref immediately (synchronous tracking)
         renderedPagesRef.current.add(pageNum)
         // Update state for UI (triggers spinner hide)
@@ -263,6 +344,26 @@ function PDFViewer({ data, initialScrollPosition, initialScale, onScrollChange, 
       }
     }
   }, [pdf, totalPages, renderPage])
+
+  // Update content detection when investigate mode changes
+  useEffect(() => {
+    if (isInvestigateMode) {
+      // Detect content in all rendered pages
+      for (const pageNum of renderedPagesRef.current) {
+        const textContent = textContentCache.current.get(pageNum)
+        const textLayer = textLayerRefs.current.get(pageNum)
+        if (textContent && textLayer) {
+          detectPageContent(pageNum, textContent)
+          requestAnimationFrame(() => {
+            updateZoneBounds(pageNum, textLayer)
+          })
+        }
+      }
+    } else {
+      // Clear detection when exiting investigate mode
+      clearContentDetection()
+    }
+  }, [isInvestigateMode, detectPageContent, updateZoneBounds, clearContentDetection])
 
   // Restore initial scroll position after first page renders
   useEffect(() => {
@@ -495,9 +596,9 @@ function PDFViewer({ data, initialScrollPosition, initialScale, onScrollChange, 
       {/* PDF pages container */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto bg-gray-800 p-4"
+        className={`flex-1 overflow-auto bg-gray-800 p-4 relative ${isInvestigateMode ? 'investigate-mode' : ''}`}
       >
-        <div className="flex flex-col items-center gap-4">
+        <div ref={pdfContainerRef} className="flex flex-col items-center gap-4">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
             <div
               key={pageNum}
@@ -526,12 +627,50 @@ function PDFViewer({ data, initialScrollPosition, initialScale, onScrollChange, 
                 }}
                 className="absolute inset-0"
               />
+
+              {/* Highlight layer - rendered on top of text layer */}
+              {renderedPages.has(pageNum) && onUpdateHighlight && onDeleteHighlight && (
+                <HighlightLayer
+                  highlights={highlights}
+                  textLayerInfo={textLayerRefs.current.get(pageNum) ? {
+                    container: textLayerRefs.current.get(pageNum)!,
+                    textContent: textContentCache.current.get(pageNum) || '',
+                    scale,
+                  } : null}
+                  pageNumber={pageNum}
+                  onUpdateHighlight={onUpdateHighlight}
+                  onDeleteHighlight={onDeleteHighlight}
+                />
+              )}
+
+              {/* Bookmark indicator */}
+              {onToggleBookmark && renderedPages.has(pageNum) && (
+                <div className="absolute top-2 right-2 z-10">
+                  <BookmarkIndicator
+                    isBookmarked={bookmarkedPages.has(pageNum)}
+                    onClick={() => onToggleBookmark(pageNum)}
+                    size="md"
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>
+
+        {/* Interactive zone overlay for investigate mode */}
+        <InteractiveZoneOverlay
+          zones={zones}
+          containerRef={pdfContainerRef}
+          onZoneClick={onZoneClick}
+          isVisible={isInvestigateMode}
+        />
       </div>
     </div>
   )
+})
+
+function PDFViewer(props: PDFViewerProps) {
+  return <PDFViewerInner {...props} />
 }
 
 export default PDFViewer

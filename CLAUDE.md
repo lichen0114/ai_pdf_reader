@@ -81,8 +81,12 @@ SQLite database (`activepaper.db` in userData) via better-sqlite3 for persistent
   - `interactions.ts` - AI query history with activity statistics
   - `concepts.ts` - Extracted concepts with graph relationships
   - `reviews.ts` - SM-2 spaced repetition algorithm
+  - `highlights.ts` - Text highlights with colors and notes
+  - `bookmarks.ts` - Page-level bookmarks
+  - `conversations.ts` - Persistent AI conversation threads
+  - `search.ts` - FTS5 full-text search across documents, interactions, concepts
 
-Schema relationships: documents → interactions → concepts (via junction tables), interactions → review_cards
+Schema relationships: documents → interactions → concepts (via junction tables), interactions → review_cards, documents → highlights, documents → conversations → conversation_messages
 
 ### Security
 
@@ -100,6 +104,10 @@ Schema relationships: documents → interactions → concepts (via junction tabl
 - `db:interactions:*` - Interaction storage and statistics
 - `db:concepts:*` - Concept graph and extraction
 - `db:review:*` - Spaced repetition card management
+- `db:highlights:*` - Highlight CRUD (create, update, delete, byDocument, byPage)
+- `db:bookmarks:*` - Bookmark toggle and listing
+- `db:conversations:*` - Conversation threads with messages
+- `search:*` - Full-text search (documents, interactions, concepts, all)
 
 ### UI Layout
 
@@ -124,15 +132,30 @@ Multiple PDFs can be open simultaneously in tabs. Key design decisions:
 - **State per tab**: Each tab stores its own `pdfData`, `scrollPosition`, `scale`, and `documentId` via `useTabs` hook
 - **Keyboard navigation**: Cmd+Shift+[ / ] for prev/next tab, Cmd+1-9 for direct tab access
 
+### Keyboard Shortcuts
+
+- `Cmd+O` - Open PDF file
+- `Cmd+W` - Close current tab
+- `Cmd+J` - Explain selected text
+- `Cmd+E` - Open equation explorer (when text selected)
+- `Cmd+F` - Open search modal
+- `Cmd+Shift+F` - Open search modal (global)
+- `Cmd+Shift+[` / `]` - Previous/next tab
+- `Cmd+1-9` - Jump to tab by index
+- `Escape` - Close active panel/modal/STEM tool
+- `Alt` (hold) - Enter investigate mode
+
 ### UI Mode System
 
 The app uses a three-mode system managed by `ModeContext`:
 
 - **reading**: Default mode, normal PDF viewing
-- **investigate**: Alt/Option key held, interactive zones glow (planned feature)
+- **investigate**: Alt/Option key held, interactive zones glow with content detection highlighting equations, code, and technical terms
 - **simulation**: A STEM tool is open (dims PDF background)
 
 Mode transitions: `reading` ↔ `investigate` (Alt key), `reading`/`investigate` → `simulation` (tool opens), `simulation` → `reading` (tool closes/Escape)
+
+When in investigate mode, `useContentDetection` hook scans rendered pages for STEM content and `InteractiveZoneOverlay` renders clickable highlights. Clicking a zone opens the corresponding STEM tool.
 
 ### STEM Tools
 
@@ -158,20 +181,35 @@ Three interactive tools for STEM content, accessible via SelectionPopover (conte
 
 Content detection uses regex patterns in `src/services/contentDetector.ts` for LaTeX (`$...$`, `$$...$$`, `\command{}`), code blocks (``` markers), and technical terms (STEM vocabulary patterns).
 
+### Highlights & Annotations
+
+Text highlights are stored as character offsets (start/end) within a page, making them scale-independent:
+
+- `useSelection` captures `startOffset` and `endOffset` when text is selected
+- `HighlightLayer` component renders highlight rectangles by walking text layer spans and matching offsets
+- Highlights support 5 colors (yellow, green, blue, pink, purple) and optional notes
+- `HighlightPopover` provides edit/delete UI on click
+
+Bookmarks are page-level markers with optional labels, shown as indicators in the top-right of each page.
+
 ### React Hooks
 
-- `useSelection` - Captures text selection, page context, and DOMRect position
+- `useSelection` - Captures text selection, page context, character offsets, and DOMRect position
 - `useAI` - Manages AI query state, streaming responses, supports action types and conversation history
-- `useConversation` - Manages follow-up conversation state (messages array, selected text context)
+- `useConversation` - Persistent conversation threads with database storage
 - `useHistory` - Tracks session query history (in-memory, cleared on app restart)
 - `useTabs` - Tab state management (open, close, select, update tabs with per-tab scroll/scale)
 - `useDashboard` - Fetches all dashboard data (recent docs, stats, concepts, review count)
 - `useReviewCards` - Review card state, flip, and rating actions
 - `useConceptGraph` - Concept graph data with node selection
 - `useUIMode` - Access to UI mode system (reading/investigate/simulation)
+- `useContentDetection` - Detects STEM content (equations, code, terms) in page text for investigate mode
 - `useEquationEngine` - Equation parsing, variable manipulation, graph generation
 - `useCodeSandbox` - Code execution, runtime management, output streaming
 - `useConceptStack` - Recursive concept exploration with stack navigation
+- `useHighlights` - Persistent text highlights with colors and notes
+- `useBookmarks` - Page-level bookmarks
+- `useSearch` - Full-text search with scope filtering (all, current PDF, library, interactions, concepts)
 
 ## Build Notes
 
