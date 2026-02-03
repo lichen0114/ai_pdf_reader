@@ -25,6 +25,7 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const renderingRef = useRef<Set<number>>(new Set())
+  const renderedPagesRef = useRef<Set<number>>(new Set())
   const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null)
   const loadingTaskRef = useRef<pdfjsLib.PDFDocumentLoadingTask | null>(null)
   const renderTasksRef = useRef<Map<number, pdfjsLib.RenderTask>>(new Map())
@@ -77,6 +78,7 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
           setPdf(pdfDoc)
           setTotalPages(pdfDoc.numPages)
           setRenderedPages(new Set())
+          renderedPagesRef.current.clear()
           renderingRef.current.clear()
           pageRefs.current.clear()
         } else {
@@ -120,6 +122,13 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
         container.style.width = `${viewport.width}px`
         container.style.height = `${viewport.height}px`
 
+        // Update parent container to match page dimensions (prevents overlap)
+        const parentDiv = container.parentElement
+        if (parentDiv) {
+          parentDiv.style.width = `${viewport.width}px`
+          parentDiv.style.height = `${viewport.height}px`
+        }
+
         // Create canvas
         const canvas = document.createElement('canvas')
         canvas.width = viewport.width * window.devicePixelRatio
@@ -159,6 +168,9 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
         })
         await textLayerInstance.render()
 
+        // Update ref immediately (synchronous tracking)
+        renderedPagesRef.current.add(pageNum)
+        // Update state for UI (triggers spinner hide)
         setRenderedPages((prev) => new Set([...prev, pageNum]))
       } catch (err) {
         // Ignore cancellation errors
@@ -209,7 +221,7 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
         const pageBottom = accumulatedHeight + pageHeight
 
         if (pageBottom >= visibleStart && pageTop <= visibleEnd) {
-          if (!renderedPages.has(i) && !renderingRef.current.has(i)) {
+          if (!renderedPagesRef.current.has(i) && !renderingRef.current.has(i)) {
             renderPage(i, pageDiv)
           }
         }
@@ -217,7 +229,7 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
         accumulatedHeight += pageHeight
       }
     }
-  }, [pdf, totalPages, renderedPages, renderPage])
+  }, [pdf, totalPages, renderPage])
 
   // Set up scroll listener
   useEffect(() => {
@@ -235,7 +247,7 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
     // Render first 3 pages
     for (let i = 1; i <= Math.min(3, totalPages); i++) {
       const pageDiv = pageRefs.current.get(i)
-      if (pageDiv && !renderedPages.has(i)) {
+      if (pageDiv && !renderedPagesRef.current.has(i)) {
         renderPage(i, pageDiv)
       }
     }
@@ -254,6 +266,7 @@ function PDFViewer({ data, onError }: PDFViewerProps) {
     }
 
     setRenderedPages(new Set())
+    renderedPagesRef.current.clear()
 
     // Re-render visible pages
     setTimeout(handleScroll, 0)
