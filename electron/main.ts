@@ -18,7 +18,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.mjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
@@ -178,7 +178,8 @@ function setupIPC() {
   ipcMain.handle('file:read', async (_event, filePath: string) => {
     const fs = await import('fs/promises')
     const buffer = await fs.readFile(filePath)
-    return buffer
+    // Convert Buffer to ArrayBuffer for proper IPC serialization with contextIsolation
+    return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
   })
 }
 

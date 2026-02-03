@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 export interface ProviderInfo {
   id: string
@@ -72,8 +72,13 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // File Operations
-  readFile: (filePath: string): Promise<Buffer> => {
+  readFile: (filePath: string): Promise<ArrayBuffer> => {
     return ipcRenderer.invoke('file:read', filePath)
+  },
+
+  // Get file path from dropped file (for drag-and-drop)
+  getFilePath: (file: File): string => {
+    return webUtils.getPathForFile(file)
   },
 
   // Event Listeners
@@ -104,7 +109,8 @@ declare global {
       setApiKey: (providerId: string, apiKey: string) => Promise<boolean>
       hasApiKey: (providerId: string) => Promise<boolean>
       deleteApiKey: (providerId: string) => Promise<boolean>
-      readFile: (filePath: string) => Promise<Buffer>
+      readFile: (filePath: string) => Promise<ArrayBuffer>
+      getFilePath: (file: File) => string
       onFileOpened: (callback: (filePath: string) => void) => () => void
     }
   }

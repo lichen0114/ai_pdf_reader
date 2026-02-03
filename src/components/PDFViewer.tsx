@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import { TextLayer } from 'pdfjs-dist'
+import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
-// Set worker source using Vite's new URL pattern
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).href
+// Set worker source using Vite's ?url import for reliable path resolution
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl
 
 interface PDFViewerProps {
   data: ArrayBuffer
+  onError?: (message: string) => void
 }
 
 const SCALE_DEFAULT = 1.5
@@ -17,7 +16,7 @@ const SCALE_MIN = 0.5
 const SCALE_MAX = 3.0
 const SCALE_STEP = 0.25
 
-function PDFViewer({ data }: PDFViewerProps) {
+function PDFViewer({ data, onError }: PDFViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [scale, setScale] = useState(SCALE_DEFAULT)
@@ -34,7 +33,9 @@ function PDFViewer({ data }: PDFViewerProps) {
     const loadPdf = async () => {
       console.log('Loading PDF, data length:', data.byteLength)
       try {
-        const loadingTask = pdfjsLib.getDocument({ data })
+        // Clone the ArrayBuffer to prevent detachment issues when PDF.js transfers it to the worker
+        const dataClone = data.slice(0)
+        const loadingTask = pdfjsLib.getDocument({ data: dataClone })
         const pdfDoc = await loadingTask.promise
         console.log('PDF loaded, pages:', pdfDoc.numPages)
 
@@ -46,7 +47,9 @@ function PDFViewer({ data }: PDFViewerProps) {
           pageRefs.current.clear()
         }
       } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load PDF'
         console.error('Failed to load PDF:', err)
+        onError?.(message)
       }
     }
 

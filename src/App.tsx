@@ -9,6 +9,7 @@ import { useAI } from './hooks/useAI'
 function App() {
   const [pdfFile, setPdfFile] = useState<ArrayBuffer | null>(null)
   const [fileName, setFileName] = useState<string>('')
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
@@ -21,14 +22,13 @@ function App() {
 
     const unsubscribe = window.api.onFileOpened(async (filePath: string) => {
       try {
-        const buffer = await window.api.readFile(filePath)
-        const arrayBuffer = buffer.buffer.slice(
-          buffer.byteOffset,
-          buffer.byteOffset + buffer.byteLength
-        ) as ArrayBuffer
+        setLoadError(null)
+        const arrayBuffer = await window.api.readFile(filePath)
         setPdfFile(arrayBuffer)
         setFileName(filePath.split('/').pop() || 'document.pdf')
       } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to open file'
+        setLoadError(message)
         console.error('Failed to open file:', err)
       }
     })
@@ -71,26 +71,22 @@ function App() {
     const file = e.dataTransfer.files[0]
     if (!file) return
 
-    // Check both MIME type and file extension
     const isPdf = file.type === 'application/pdf' ||
                   file.name.toLowerCase().endsWith('.pdf')
     if (!isPdf) return
 
-    // Use Electron's file.path property + IPC to read file (same as menu handler)
-    const filePath = (file as File & { path: string }).path
+    if (!window.api) return
 
-    if (filePath && window.api) {
-      try {
-        const buffer = await window.api.readFile(filePath)
-        const arrayBuffer = buffer.buffer.slice(
-          buffer.byteOffset,
-          buffer.byteOffset + buffer.byteLength
-        ) as ArrayBuffer
-        setPdfFile(arrayBuffer)
-        setFileName(file.name)
-      } catch (err) {
-        console.error('Failed to open dropped file:', err)
-      }
+    try {
+      setLoadError(null)
+      const filePath = window.api.getFilePath(file)
+      const arrayBuffer = await window.api.readFile(filePath)
+      setPdfFile(arrayBuffer)
+      setFileName(file.name)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to open file'
+      setLoadError(message)
+      console.error('Failed to open dropped file:', err)
     }
   }, [])
 
@@ -119,7 +115,7 @@ function App() {
         onDragOver={handleDragOver}
       >
         {pdfFile ? (
-          <PDFViewer data={pdfFile} />
+          <PDFViewer data={pdfFile} onError={(msg) => setLoadError(msg)} />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-gray-500">
             <svg
@@ -137,6 +133,24 @@ function App() {
             </svg>
             <p className="text-lg mb-2">Drop a PDF file here</p>
             <p className="text-sm">or use File → Open (⌘O)</p>
+          </div>
+        )}
+
+        {/* Error display */}
+        {loadError && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-900/90 text-red-200 px-4 py-2 rounded-lg shadow-lg text-sm flex items-center gap-2 max-w-md">
+            <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="truncate">{loadError}</span>
+            <button
+              onClick={() => setLoadError(null)}
+              className="ml-2 p-1 hover:bg-red-800 rounded"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         )}
 

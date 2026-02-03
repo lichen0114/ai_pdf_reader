@@ -8,9 +8,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev        # Start Vite dev server with Electron (hot reload enabled)
 npm run build      # Full build: tsc + vite build + electron-builder
 npm run typecheck  # TypeScript validation without emitting files
+npm run preview    # Preview production build
 ```
 
-No test suite is currently configured.
+## Test Commands
+
+```bash
+npm test                              # Run tests in watch mode
+npm run test:run                      # Single test run
+npm run test:coverage                 # Run tests with coverage report
+npx vitest run tests/path/to/file    # Run a specific test file
+npx vitest run -t "test name"        # Run tests matching a pattern
+```
+
+Tests use Vitest with jsdom environment. Test files are in `tests/` mirroring the source structure. MSW is used for mocking HTTP requests to AI provider APIs.
 
 ## Architecture
 
@@ -32,13 +43,19 @@ AI PDF Reader is an Electron + React desktop app that lets users select text in 
 
 ### AI Provider System
 
-Providers implement a common interface with async generator pattern for streaming:
+Providers in `electron/providers/` implement the `AIProvider` interface:
 
-- `electron/providers/index.ts` - ProviderManager (routing, availability checks)
-- `electron/providers/ollama.ts` - Local Ollama (localhost:11434)
-- `electron/providers/openai.ts` - OpenAI API (gpt-4o-mini)
-- `electron/providers/anthropic.ts` - Anthropic Claude (claude-3-5-haiku-latest)
-- `electron/providers/gemini.ts` - Google Gemini (gemini-1.5-flash)
+```typescript
+interface AIProvider {
+  id: string
+  name: string
+  type: 'local' | 'cloud'
+  complete(request: CompletionRequest): AsyncIterable<string>  // Streaming via async generator
+  isAvailable(): Promise<boolean>
+}
+```
+
+To add a new provider: implement the interface with an async generator `complete()` method, then register in `ProviderManager.initializeProviders()`.
 
 ### Security
 
@@ -48,12 +65,26 @@ Providers implement a common interface with async generator pattern for streamin
 
 ### Key IPC Channels
 
-- `ai:query` - Start streaming AI query
+- `ai:query` - Start streaming AI query (returns `channelId` for streaming responses)
 - `provider:list/getCurrent/setCurrent` - Provider management
 - `keys:set/has/delete` - API key management
+- `file:read` - Read file from disk (returns `ArrayBuffer`, not `Buffer`)
+
+## Build Notes
+
+- **Preload script**: Must output as `.mjs` (ESM) because Vite's Rollup configuration doesn't reliably convert ESM imports to CommonJS `require()` calls. The `.mjs` extension tells Node.js to treat the file as ESM regardless of package.json type. Configured via `entryFileNames: 'preload.mjs'` and `format: 'es'` in `vite.config.ts`.
+
+- **PDF.js worker**: Use Vite's `?url` import suffix for worker paths (`import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'`). This ensures correct path resolution in both dev and production builds.
+
+- **IPC Buffer serialization**: With `contextIsolation: true`, Node.js `Buffer` objects are converted to `Uint8Array` during IPC. The main process should convert to `ArrayBuffer` before sending to avoid serialization issues.
 
 ## Path Aliases
 
-Configured in `vite.config.ts`:
+Configured in both `vite.config.ts` and `vitest.config.ts`:
 - `@` → `src/`
 - `@electron` → `electron/`
+
+## Type Declarations
+
+- `src/vite-env.d.ts` - Global types for renderer process (`Window.api` interface)
+- `electron/preload.ts` - Contains duplicate `Window` interface declaration for preload context

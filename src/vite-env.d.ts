@@ -23,7 +23,8 @@ interface Window {
     setApiKey: (providerId: string, apiKey: string) => Promise<boolean>
     hasApiKey: (providerId: string) => Promise<boolean>
     deleteApiKey: (providerId: string) => Promise<boolean>
-    readFile: (filePath: string) => Promise<Buffer>
+    readFile: (filePath: string) => Promise<ArrayBuffer>
+    getFilePath: (file: File) => string
     onFileOpened: (callback: (filePath: string) => void) => () => void
   }
 }
