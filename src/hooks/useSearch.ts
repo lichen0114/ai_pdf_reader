@@ -9,6 +9,7 @@ export interface SearchState {
   results: SearchResults | null
   pdfMatches: PDFSearchMatch[]
   selectedResultIndex: number
+  error: string | null
 }
 
 export interface PDFSearchMatch {
@@ -29,6 +30,7 @@ export function useSearch(documentId?: string | null) {
     results: null,
     pdfMatches: [],
     selectedResultIndex: 0,
+    error: null,
   })
 
   const setQuery = useCallback((query: string) => {
@@ -36,17 +38,17 @@ export function useSearch(documentId?: string | null) {
   }, [])
 
   const setScope = useCallback((scope: SearchScope) => {
-    setState(prev => ({ ...prev, scope, results: null, pdfMatches: [], selectedResultIndex: 0, isLoading: false }))
+    setState(prev => ({ ...prev, scope, results: null, pdfMatches: [], selectedResultIndex: 0, isLoading: false, error: null }))
   }, [])
 
   const search = useCallback(async () => {
     const { query, scope } = state
     if (!query.trim()) {
-      setState(prev => ({ ...prev, results: null, pdfMatches: [] }))
+      setState(prev => ({ ...prev, results: null, pdfMatches: [], error: null }))
       return
     }
 
-    setState(prev => ({ ...prev, isLoading: true }))
+    setState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
       if (scope === 'currentPdf') {
@@ -74,9 +76,10 @@ export function useSearch(documentId?: string | null) {
       }
 
       setState(prev => ({ ...prev, results, isLoading: false }))
-    } catch (error) {
-      console.error('Search failed:', error)
-      setState(prev => ({ ...prev, isLoading: false }))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Search failed'
+      console.error('Search failed:', err)
+      setState(prev => ({ ...prev, isLoading: false, error: message }))
     }
   }, [state.query, state.scope, documentId])
 
@@ -116,7 +119,12 @@ export function useSearch(documentId?: string | null) {
       results: null,
       pdfMatches: [],
       selectedResultIndex: 0,
+      error: null,
     })
+  }, [])
+
+  const clearError = useCallback(() => {
+    setState(prev => ({ ...prev, error: null }))
   }, [])
 
   return {
@@ -130,6 +138,7 @@ export function useSearch(documentId?: string | null) {
     selectNextResult,
     selectPreviousResult,
     clearSearch,
+    clearError,
     totalResults: getTotalResults(state),
   }
 }

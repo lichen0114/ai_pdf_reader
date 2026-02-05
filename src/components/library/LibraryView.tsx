@@ -5,6 +5,8 @@ interface LibraryViewProps {
   onOpenDocument: (filepath: string) => void
   onOpenDialog: () => void
   limit?: number
+  currentWorkspace?: Workspace | null
+  onAddToWorkspace?: (documentId: string) => Promise<boolean>
 }
 
 function formatTimeAgo(timestamp: number): string {
@@ -30,6 +32,8 @@ export default function LibraryView({
   onOpenDocument,
   onOpenDialog,
   limit = 20,
+  currentWorkspace,
+  onAddToWorkspace,
 }: LibraryViewProps) {
   const [documents, setDocuments] = useState<Document[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -122,13 +126,15 @@ export default function LibraryView({
           ) : (
             <div className="space-y-3">
               {documents.map((doc) => (
-                <button
+                <div
                   key={doc.id}
-                  className="w-full text-left bg-gray-900/60 hover:bg-gray-800/80 border border-gray-800/70 rounded-xl p-4 transition-colors"
-                  onClick={() => onOpenDocument(doc.filepath)}
+                  className="group w-full bg-gray-900/60 hover:bg-gray-800/80 border border-gray-800/70 rounded-xl p-4 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
+                    <button
+                      className="flex-1 text-left min-w-0"
+                      onClick={() => onOpenDocument(doc.filepath)}
+                    >
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-white truncate">
                           {doc.filename}
@@ -142,20 +148,41 @@ export default function LibraryView({
                       <div className="text-xs text-gray-500 truncate mt-1">
                         {doc.filepath}
                       </div>
-                    </div>
-                    <div className="text-xs text-gray-400 whitespace-nowrap">
-                      {formatTimeAgo(doc.last_opened_at)}
+                    </button>
+                    <div className="flex items-center gap-2">
+                      {currentWorkspace && onAddToWorkspace && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onAddToWorkspace(doc.id)
+                          }}
+                          className="p-1.5 rounded text-gray-500 hover:text-blue-400 hover:bg-blue-600/20 opacity-0 group-hover:opacity-100 transition-all"
+                          title={`Add to ${currentWorkspace.name}`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                        </button>
+                      )}
+                      <div className="text-xs text-gray-400 whitespace-nowrap">
+                        {formatTimeAgo(doc.last_opened_at)}
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-                    <span>Opened {formatDate(doc.last_opened_at)}</span>
-                    {doc.scroll_position > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300">
-                        Resume ready
-                      </span>
-                    )}
-                  </div>
-                </button>
+                  <button
+                    className="w-full text-left"
+                    onClick={() => onOpenDocument(doc.filepath)}
+                  >
+                    <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                      <span>Opened {formatDate(doc.last_opened_at)}</span>
+                      {doc.scroll_position > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300">
+                          Resume ready
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                </div>
               ))}
             </div>
           )}

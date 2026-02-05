@@ -201,6 +201,29 @@ export interface SearchResults {
   concepts: ConceptSearchResult[]
 }
 
+// Workspace types
+export interface Workspace {
+  id: string
+  name: string
+  description: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface WorkspaceWithCount extends Workspace {
+  document_count: number
+}
+
+export interface ConversationSource {
+  id: string
+  conversation_id: string
+  document_id: string
+  quoted_text: string | null
+  page_number: number | null
+  created_at: number
+  filename: string
+}
+
 contextBridge.exposeInMainWorld('api', {
   // AI Operations
   askAI: async (
@@ -486,5 +509,71 @@ contextBridge.exposeInMainWorld('api', {
 
   searchInteractionsInDocument: (documentId: string, query: string, limit?: number): Promise<InteractionSearchResult[]> => {
     return ipcRenderer.invoke('search:interactionsInDocument', { documentId, query, limit })
+  },
+
+  // Workspaces
+  createWorkspace: (name: string, description?: string): Promise<Workspace> => {
+    return ipcRenderer.invoke('db:workspaces:create', { name, description })
+  },
+
+  getWorkspaces: (): Promise<WorkspaceWithCount[]> => {
+    return ipcRenderer.invoke('db:workspaces:list')
+  },
+
+  getWorkspace: (id: string): Promise<Workspace | null> => {
+    return ipcRenderer.invoke('db:workspaces:get', id)
+  },
+
+  updateWorkspace: (id: string, updates: { name?: string; description?: string }): Promise<Workspace | null> => {
+    return ipcRenderer.invoke('db:workspaces:update', { id, ...updates })
+  },
+
+  deleteWorkspace: (id: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:workspaces:delete', id)
+  },
+
+  addDocumentToWorkspace: (workspaceId: string, documentId: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:workspaces:addDocument', { workspaceId, documentId })
+  },
+
+  removeDocumentFromWorkspace: (workspaceId: string, documentId: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:workspaces:removeDocument', { workspaceId, documentId })
+  },
+
+  getWorkspaceDocuments: (workspaceId: string): Promise<Document[]> => {
+    return ipcRenderer.invoke('db:workspaces:getDocuments', workspaceId)
+  },
+
+  getDocumentWorkspaces: (documentId: string): Promise<Workspace[]> => {
+    return ipcRenderer.invoke('db:workspaces:getForDocument', documentId)
+  },
+
+  isDocumentInWorkspace: (workspaceId: string, documentId: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:workspaces:isDocumentInWorkspace', { workspaceId, documentId })
+  },
+
+  // Conversation sources for multi-document chat
+  addConversationSource: (conversationId: string, documentId: string, quotedText?: string, pageNumber?: number): Promise<ConversationSource> => {
+    return ipcRenderer.invoke('db:conversationSources:add', { conversationId, documentId, quotedText, pageNumber })
+  },
+
+  removeConversationSource: (id: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:conversationSources:remove', id)
+  },
+
+  removeConversationSourceByDocument: (conversationId: string, documentId: string): Promise<boolean> => {
+    return ipcRenderer.invoke('db:conversationSources:removeByDocument', { conversationId, documentId })
+  },
+
+  getConversationSources: (conversationId: string): Promise<ConversationSource[]> => {
+    return ipcRenderer.invoke('db:conversationSources:get', conversationId)
+  },
+
+  setConversationWorkspace: (conversationId: string, workspaceId: string | null): Promise<boolean> => {
+    return ipcRenderer.invoke('db:conversations:setWorkspace', { conversationId, workspaceId })
+  },
+
+  getWorkspaceConversations: (workspaceId: string): Promise<Array<{ id: string; selected_text: string; title: string | null; created_at: number; updated_at: number }>> => {
+    return ipcRenderer.invoke('db:workspaces:getConversations', workspaceId)
   },
 })

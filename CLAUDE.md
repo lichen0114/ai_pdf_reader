@@ -90,8 +90,9 @@ SQLite database (`activepaper.db` in userData) via better-sqlite3 for persistent
   - `bookmarks.ts` - Page-level bookmarks
   - `conversations.ts` - Persistent AI conversation threads
   - `search.ts` - FTS5 full-text search across documents, interactions, concepts
+  - `workspaces.ts` - Workspace management for multi-document chat
 
-Schema relationships: documents → interactions → concepts (via junction tables), interactions → review_cards, documents → highlights, documents → conversations → conversation_messages
+Schema relationships: documents → interactions → concepts (via junction tables), interactions → review_cards, documents → highlights, documents → conversations → conversation_messages, workspaces → workspace_documents → documents, conversations → conversation_sources → documents
 
 ### Security
 
@@ -113,6 +114,8 @@ Schema relationships: documents → interactions → concepts (via junction tabl
 - `db:highlights:*` - Highlight CRUD (create, update, delete, byDocument, byPage)
 - `db:bookmarks:*` - Bookmark toggle and listing
 - `db:conversations:*` - Conversation threads with messages
+- `db:workspaces:*` - Workspace CRUD and document membership
+- `db:conversationSources:*` - Multi-document conversation sources
 - `search:*` - Full-text search (documents, interactions, concepts, all)
 
 ### UI Layout
@@ -203,6 +206,17 @@ Text highlights are stored as character offsets (start/end) within a page, makin
 
 Bookmarks are page-level markers with optional labels, shown as indicators in the top-right of each page.
 
+### Workspaces & Multi-Document Chat
+
+Workspaces group related documents for cross-document AI conversations:
+
+- **WorkspaceSwitcher** in title bar allows creating/selecting workspaces
+- **useWorkspace** hook manages workspace state with localStorage persistence for current workspace
+- **Conversation sources** track multiple documents contributing context to a single conversation thread
+- **useConversation** extended with `sourceDocuments`, `addSourceDocument()`, `removeSourceDocument()` for multi-doc context
+
+Database tables: `workspaces`, `workspace_documents` (junction), `conversation_sources`. The `conversations` table has optional `workspace_id` foreign key.
+
 ### React Hooks
 
 - `useSelection` - Captures text selection, page context, character offsets, and DOMRect position
@@ -221,6 +235,7 @@ Bookmarks are page-level markers with optional labels, shown as indicators in th
 - `useHighlights` - Persistent text highlights with colors and notes
 - `useBookmarks` - Page-level bookmarks
 - `useSearch` - Full-text search with scope filtering (all, current PDF, library, interactions, concepts)
+- `useWorkspace` - Workspace state management with localStorage persistence for multi-document chat
 
 ## Build Notes
 

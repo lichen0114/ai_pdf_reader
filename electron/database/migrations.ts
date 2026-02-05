@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 const REQUIRED_TABLES_V1 = [
   'documents',
   'interactions',
@@ -18,7 +18,13 @@ const V2_TABLES = [
   'interactions_fts',
   'concepts_fts',
 ] as const
+const V3_TABLES = [
+  'workspaces',
+  'workspace_documents',
+  'conversation_sources',
+] as const
 const REQUIRED_TABLES_V2 = [...REQUIRED_TABLES_V1, ...V2_TABLES] as const
+const REQUIRED_TABLES_V3 = [...REQUIRED_TABLES_V2, ...V3_TABLES] as const
 
 type FtsSeedPlan = {
   documents: boolean
@@ -103,7 +109,11 @@ function planFtsSeed(db: Database.Database): FtsSeedPlan {
 }
 
 function applyMigrations(db: Database.Database, fromVersion: number): void {
-  const migrations: Array<() => void> = [() => migration1(db), () => migration2(db)]
+  const migrations: Array<() => void> = [
+    () => migration1(db),
+    () => migration2(db),
+    () => migration3(db),
+  ]
 
   // Apply migrations sequentially
   db.transaction(() => {
@@ -120,14 +130,20 @@ export function verifyAndRepairSchema(db: Database.Database): SchemaRepairResult
   ensureSchemaVersionTable(db)
 
   const missingV1Tables = getMissingTables(db, REQUIRED_TABLES_V1)
-  const missingAllTables = getMissingTables(db, REQUIRED_TABLES_V2)
-  const missingV2Tables = missingAllTables.filter((name) => !missingV1Tables.includes(name))
+  const missingV2Tables = getMissingTables(db, REQUIRED_TABLES_V2).filter(
+    (name) => !missingV1Tables.includes(name)
+  )
+  const missingV3Tables = getMissingTables(db, REQUIRED_TABLES_V3).filter(
+    (name) => !missingV1Tables.includes(name) && !missingV2Tables.includes(name)
+  )
+  const missingAllTables = getMissingTables(db, REQUIRED_TABLES_V3)
 
   if (missingV1Tables.length > 0) {
     db.transaction(() => {
       migration1(db)
       const seedPlan = planFtsSeed(db)
       migration2(db, { seedFts: seedPlan })
+      migration3(db)
       setSchemaVersion(db)
     })()
     return { repaired: true, missingTables: missingAllTables }
@@ -137,9 +153,18 @@ export function verifyAndRepairSchema(db: Database.Database): SchemaRepairResult
     db.transaction(() => {
       const seedPlan = planFtsSeed(db)
       migration2(db, { seedFts: seedPlan })
+      migration3(db)
       setSchemaVersion(db)
     })()
-    return { repaired: true, missingTables: missingV2Tables }
+    return { repaired: true, missingTables: [...missingV2Tables, ...missingV3Tables] }
+  }
+
+  if (missingV3Tables.length > 0) {
+    db.transaction(() => {
+      migration3(db)
+      setSchemaVersion(db)
+    })()
+    return { repaired: true, missingTables: missingV3Tables }
   }
 
   if (getSchemaVersion(db) < SCHEMA_VERSION) {
@@ -378,5 +403,56 @@ function migration2(
 
   if (seedStatements.length > 0) {
     db.exec(seedStatements.join('\n'))
+  }
+}
+
+function migration3(db: Database.Database): void {
+  db.exec(`
+    -- Workspaces: groups of related documents for multi-document chat
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    -- Junction table: documents in workspaces
+    CREATE TABLE IF NOT EXISTS workspace_documents (
+      workspace_id TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      position INTEGER DEFAULT 0,
+      added_at INTEGER NOT NULL,
+      PRIMARY KEY (workspace_id, document_id),
+      FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+      FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+    );
+
+    -- Conversation sources: tracks multiple documents contributing to a conversation
+    CREATE TABLE IF NOT EXISTS conversation_sources (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      quoted_text TEXT,
+      page_number INTEGER,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+    );
+
+    -- Indexes for workspace tables
+    CREATE INDEX IF NOT EXISTS idx_workspace_documents_workspace ON workspace_documents(workspace_id);
+    CREATE INDEX IF NOT EXISTS idx_workspace_documents_document ON workspace_documents(document_id);
+    CREATE INDEX IF NOT EXISTS idx_conversation_sources_conversation ON conversation_sources(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_conversation_sources_document ON conversation_sources(document_id);
+    CREATE INDEX IF NOT EXISTS idx_workspaces_updated ON workspaces(updated_at);
+  `)
+
+  // Add workspace_id column to conversations table if it doesn't exist
+  const columns = db.pragma('table_info(conversations)') as Array<{ name: string }>
+  const hasWorkspaceId = columns.some((col) => col.name === 'workspace_id')
+  if (!hasWorkspaceId) {
+    db.exec(`ALTER TABLE conversations ADD COLUMN workspace_id TEXT REFERENCES workspaces(id);`)
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_conversations_workspace ON conversations(workspace_id);`)
   }
 }

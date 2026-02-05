@@ -195,6 +195,29 @@ interface SearchResults {
   concepts: ConceptSearchResult[]
 }
 
+// Workspace types
+interface Workspace {
+  id: string
+  name: string
+  description: string | null
+  created_at: number
+  updated_at: number
+}
+
+interface WorkspaceWithCount extends Workspace {
+  document_count: number
+}
+
+interface ConversationSource {
+  id: string
+  conversation_id: string
+  document_id: string
+  quoted_text: string | null
+  page_number: number | null
+  created_at: number
+  filename: string
+}
+
 interface Window {
   api: {
     askAI: (
@@ -284,5 +307,23 @@ interface Window {
     searchConcepts: (query: string, limit?: number) => Promise<ConceptSearchResult[]>
     searchAll: (query: string, limitPerType?: number) => Promise<SearchResults>
     searchInteractionsInDocument: (documentId: string, query: string, limit?: number) => Promise<InteractionSearchResult[]>
+    // Workspaces
+    createWorkspace: (name: string, description?: string) => Promise<Workspace>
+    getWorkspaces: () => Promise<WorkspaceWithCount[]>
+    getWorkspace: (id: string) => Promise<Workspace | null>
+    updateWorkspace: (id: string, updates: { name?: string; description?: string }) => Promise<Workspace | null>
+    deleteWorkspace: (id: string) => Promise<boolean>
+    addDocumentToWorkspace: (workspaceId: string, documentId: string) => Promise<boolean>
+    removeDocumentFromWorkspace: (workspaceId: string, documentId: string) => Promise<boolean>
+    getWorkspaceDocuments: (workspaceId: string) => Promise<Document[]>
+    getDocumentWorkspaces: (documentId: string) => Promise<Workspace[]>
+    isDocumentInWorkspace: (workspaceId: string, documentId: string) => Promise<boolean>
+    // Conversation sources for multi-document chat
+    addConversationSource: (conversationId: string, documentId: string, quotedText?: string, pageNumber?: number) => Promise<ConversationSource>
+    removeConversationSource: (id: string) => Promise<boolean>
+    removeConversationSourceByDocument: (conversationId: string, documentId: string) => Promise<boolean>
+    getConversationSources: (conversationId: string) => Promise<ConversationSource[]>
+    setConversationWorkspace: (conversationId: string, workspaceId: string | null) => Promise<boolean>
+    getWorkspaceConversations: (workspaceId: string) => Promise<Array<{ id: string; selected_text: string; title: string | null; created_at: number; updated_at: number }>>
   }
 }

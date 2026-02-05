@@ -1,7 +1,8 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import SearchInput from './SearchInput'
 import SearchResults from './SearchResults'
 import PDFSearchResults from './PDFSearchResults'
+import ConceptDetailsPopover from './ConceptDetailsPopover'
 import { useSearch, type PDFSearchMatch } from '../../hooks/useSearch'
 
 interface SearchModalProps {
@@ -11,6 +12,7 @@ interface SearchModalProps {
   onOpenDocument?: (filepath: string) => void
   onSearchPdf?: (query: string) => Promise<PDFSearchMatch[]>
   onJumpToPage?: (pageNumber: number) => void
+  onNavigateToInteraction?: (documentId: string, pageNumber: number) => Promise<void>
 }
 
 function SearchModal({
@@ -20,8 +22,10 @@ function SearchModal({
   onOpenDocument,
   onSearchPdf,
   onJumpToPage,
+  onNavigateToInteraction,
 }: SearchModalProps) {
   const search = useSearch(documentId)
+  const [selectedConcept, setSelectedConcept] = useState<ConceptSearchResult | null>(null)
 
   // Run search when query or scope changes
   useEffect(() => {
@@ -96,15 +100,26 @@ function SearchModal({
     onClose()
   }, [onOpenDocument, onClose])
 
-  const handleInteractionClick = useCallback((_interaction: InteractionSearchResult) => {
-    // TODO: Navigate to interaction in document
+  const handleInteractionClick = useCallback(async (interaction: InteractionSearchResult) => {
+    if (onNavigateToInteraction && interaction.page_number !== null) {
+      await onNavigateToInteraction(interaction.document_id, interaction.page_number)
+    } else if (onOpenDocument) {
+      // Fall back to just opening the document via filepath lookup
+      try {
+        const doc = await window.api.getDocumentById(interaction.document_id)
+        if (doc) {
+          onOpenDocument(doc.filepath)
+        }
+      } catch (err) {
+        console.error('Failed to navigate to interaction:', err)
+      }
+    }
     onClose()
-  }, [onClose])
+  }, [onNavigateToInteraction, onOpenDocument, onClose])
 
-  const handleConceptClick = useCallback((_concept: ConceptSearchResult) => {
-    // TODO: Show concept details
-    onClose()
-  }, [onClose])
+  const handleConceptClick = useCallback((concept: ConceptSearchResult) => {
+    setSelectedConcept(concept)
+  }, [])
 
   const handlePdfMatchClick = useCallback((match: PDFSearchMatch, index: number) => {
     search.setSelectedResultIndex(index)
@@ -179,6 +194,19 @@ function SearchModal({
           </div>
         </footer>
       </div>
+
+      {/* Concept details popover */}
+      {selectedConcept && (
+        <ConceptDetailsPopover
+          concept={selectedConcept}
+          onClose={() => setSelectedConcept(null)}
+          onDocumentClick={(filepath) => {
+            setSelectedConcept(null)
+            onOpenDocument?.(filepath)
+            onClose()
+          }}
+        />
+      )}
     </>
   )
 }

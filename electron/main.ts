@@ -13,6 +13,7 @@ import * as highlightsDb from './database/queries/highlights'
 import * as bookmarksDb from './database/queries/bookmarks'
 import * as conversationsDb from './database/queries/conversations'
 import * as searchDb from './database/queries/search'
+import * as workspacesDb from './database/queries/workspaces'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -269,12 +270,17 @@ function setupIPC() {
     return KeyStore.deleteKey(providerId)
   })
 
-  // File operations
+  // File operations (with error handling)
   ipcMain.handle('file:read', async (_event, filePath: string) => {
-    const fs = await import('fs/promises')
-    const buffer = await fs.readFile(filePath)
-    // Convert Buffer to ArrayBuffer for proper IPC serialization with contextIsolation
-    return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+    try {
+      const fs = await import('fs/promises')
+      const buffer = await fs.readFile(filePath)
+      // Convert Buffer to ArrayBuffer for proper IPC serialization with contextIsolation
+      return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+    } catch (error) {
+      console.error('Failed to read file:', error)
+      throw error instanceof Error ? error : new Error('Failed to read file')
+    }
   })
 
   ipcMain.handle('file:openDialog', async () => {
@@ -443,25 +449,116 @@ function setupIPC() {
     return conversationsDb.getConversationMessages(conversationId)
   })
 
-  // Search operations
-  ipcMain.handle('search:documents', (_event, { query, limit }: { query: string; limit?: number }) => {
-    return searchDb.searchDocuments(query, limit)
+  // Search operations (with error handling)
+  ipcMain.handle('search:documents', async (_event, { query, limit }: { query: string; limit?: number }) => {
+    try {
+      return await searchDb.searchDocuments(query, limit)
+    } catch (error) {
+      console.error('Search documents failed:', error)
+      return []
+    }
   })
 
-  ipcMain.handle('search:interactions', (_event, { query, limit }: { query: string; limit?: number }) => {
-    return searchDb.searchInteractions(query, limit)
+  ipcMain.handle('search:interactions', async (_event, { query, limit }: { query: string; limit?: number }) => {
+    try {
+      return await searchDb.searchInteractions(query, limit)
+    } catch (error) {
+      console.error('Search interactions failed:', error)
+      return []
+    }
   })
 
-  ipcMain.handle('search:concepts', (_event, { query, limit }: { query: string; limit?: number }) => {
-    return searchDb.searchConcepts(query, limit)
+  ipcMain.handle('search:concepts', async (_event, { query, limit }: { query: string; limit?: number }) => {
+    try {
+      return await searchDb.searchConcepts(query, limit)
+    } catch (error) {
+      console.error('Search concepts failed:', error)
+      return []
+    }
   })
 
-  ipcMain.handle('search:all', (_event, { query, limitPerType }: { query: string; limitPerType?: number }) => {
-    return searchDb.searchAll(query, limitPerType)
+  ipcMain.handle('search:all', async (_event, { query, limitPerType }: { query: string; limitPerType?: number }) => {
+    try {
+      return await searchDb.searchAll(query, limitPerType)
+    } catch (error) {
+      console.error('Search all failed:', error)
+      return { documents: [], interactions: [], concepts: [] }
+    }
   })
 
-  ipcMain.handle('search:interactionsInDocument', (_event, { documentId, query, limit }: { documentId: string; query: string; limit?: number }) => {
-    return searchDb.searchInteractionsInDocument(documentId, query, limit)
+  ipcMain.handle('search:interactionsInDocument', async (_event, { documentId, query, limit }: { documentId: string; query: string; limit?: number }) => {
+    try {
+      return await searchDb.searchInteractionsInDocument(documentId, query, limit)
+    } catch (error) {
+      console.error('Search interactions in document failed:', error)
+      return []
+    }
+  })
+
+  // Database operations - Workspaces
+  ipcMain.handle('db:workspaces:create', (_event, { name, description }: { name: string; description?: string }) => {
+    return workspacesDb.createWorkspace(name, description)
+  })
+
+  ipcMain.handle('db:workspaces:list', () => {
+    return workspacesDb.getWorkspacesWithDocumentCount()
+  })
+
+  ipcMain.handle('db:workspaces:get', (_event, id: string) => {
+    return workspacesDb.getWorkspace(id)
+  })
+
+  ipcMain.handle('db:workspaces:update', (_event, { id, name, description }: { id: string; name?: string; description?: string }) => {
+    return workspacesDb.updateWorkspace(id, { name, description })
+  })
+
+  ipcMain.handle('db:workspaces:delete', (_event, id: string) => {
+    return workspacesDb.deleteWorkspace(id)
+  })
+
+  ipcMain.handle('db:workspaces:addDocument', (_event, { workspaceId, documentId }: { workspaceId: string; documentId: string }) => {
+    return workspacesDb.addDocumentToWorkspace(workspaceId, documentId)
+  })
+
+  ipcMain.handle('db:workspaces:removeDocument', (_event, { workspaceId, documentId }: { workspaceId: string; documentId: string }) => {
+    return workspacesDb.removeDocumentFromWorkspace(workspaceId, documentId)
+  })
+
+  ipcMain.handle('db:workspaces:getDocuments', (_event, workspaceId: string) => {
+    return workspacesDb.getWorkspaceDocuments(workspaceId)
+  })
+
+  ipcMain.handle('db:workspaces:getForDocument', (_event, documentId: string) => {
+    return workspacesDb.getDocumentWorkspaces(documentId)
+  })
+
+  ipcMain.handle('db:workspaces:isDocumentInWorkspace', (_event, { workspaceId, documentId }: { workspaceId: string; documentId: string }) => {
+    return workspacesDb.isDocumentInWorkspace(workspaceId, documentId)
+  })
+
+  // Conversation sources for multi-document chat
+  ipcMain.handle('db:conversationSources:add', (_event, { conversationId, documentId, quotedText, pageNumber }: { conversationId: string; documentId: string; quotedText?: string; pageNumber?: number }) => {
+    return workspacesDb.addConversationSource(conversationId, documentId, quotedText, pageNumber)
+  })
+
+  ipcMain.handle('db:conversationSources:remove', (_event, id: string) => {
+    return workspacesDb.removeConversationSource(id)
+  })
+
+  ipcMain.handle('db:conversationSources:removeByDocument', (_event, { conversationId, documentId }: { conversationId: string; documentId: string }) => {
+    return workspacesDb.removeConversationSourceByDocument(conversationId, documentId)
+  })
+
+  ipcMain.handle('db:conversationSources:get', (_event, conversationId: string) => {
+    return workspacesDb.getConversationSources(conversationId)
+  })
+
+  ipcMain.handle('db:conversations:setWorkspace', (_event, { conversationId, workspaceId }: { conversationId: string; workspaceId: string | null }) => {
+    return workspacesDb.setConversationWorkspace(conversationId, workspaceId)
+  })
+
+  ipcMain.handle('db:workspaces:getConversations', (_event, workspaceId: string) => {
+    return workspacesDb.getWorkspaceConversations(workspaceId)
   })
 
   // Concept extraction using current AI provider

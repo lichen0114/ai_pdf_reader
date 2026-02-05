@@ -41,8 +41,10 @@ import { useCodeSandbox } from './hooks/useCodeSandbox'
 import { useConceptStack } from './hooks/useConceptStack'
 import { useHighlights } from './hooks/useHighlights'
 import { useBookmarks } from './hooks/useBookmarks'
+import { useWorkspace } from './hooks/useWorkspace'
 import BookmarksList from './components/highlights/BookmarksList'
 import SearchModal from './components/search/SearchModal'
+import WorkspaceSwitcher from './components/workspace/WorkspaceSwitcher'
 import DocumentNavigator from './components/navigation/DocumentNavigator'
 import type { PDFOutlineItem } from './types/pdf'
 import type { PDFSearchMatch } from './hooks/useSearch'
@@ -182,6 +184,9 @@ function AppContent() {
     toggleBookmark,
     deleteBookmark,
   } = useBookmarks(activeTab?.documentId || null)
+
+  // Workspace management
+  const workspace = useWorkspace()
 
   const [isBookmarksOpen, setIsBookmarksOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
@@ -809,6 +814,16 @@ function AppContent() {
               Reader
             </button>
           </div>
+
+          {/* Workspace switcher */}
+          <WorkspaceSwitcher
+            workspaces={workspace.workspaces}
+            currentWorkspace={workspace.currentWorkspace}
+            onSelect={workspace.selectWorkspace}
+            onCreate={workspace.createWorkspace}
+            onDelete={workspace.deleteWorkspace}
+            isLoading={workspace.isLoading}
+          />
         </div>
 
         {/* STEM Tools - only show in reader view */}
@@ -892,6 +907,8 @@ function AppContent() {
             isActive={currentView === 'library'}
             onOpenDocument={handleOpenDocument}
             onOpenDialog={handleNewTab}
+            currentWorkspace={workspace.currentWorkspace}
+            onAddToWorkspace={workspace.addDocument}
           />
         ) : (
           <>
@@ -1052,6 +1069,21 @@ function AppContent() {
         onOpenDocument={handleOpenDocument}
         onSearchPdf={searchCurrentPdf}
         onJumpToPage={handleJumpToPage}
+        onNavigateToInteraction={async (docId, page) => {
+          // Look up document filepath and open it
+          try {
+            const doc = await window.api.getDocumentById(docId)
+            if (doc) {
+              await handleOpenDocument(doc.filepath)
+              // Wait for tab to load, then jump to page
+              setTimeout(() => {
+                handleJumpToPage(page)
+              }, 500)
+            }
+          } catch (err) {
+            console.error('Failed to navigate to interaction:', err)
+          }
+        }}
       />
 
       {/* Mode indicator - only in reader view */}
