@@ -28,13 +28,18 @@ Tests use Vitest with jsdom environment (default) or node environment for databa
 - `tests/mocks/window-api.ts` - Mock `window.api` IPC methods for renderer tests
 - Database query tests require `@vitest-environment node` directive at file top
 
+**Known Pre-existing Test Failures**:
+- Provider tests (gemini, openai, anthropic, ollama) fail due to MSW setup issue — `server` imported from `tests/setup.ts` is only initialized in jsdom, but provider tests run in jsdom where MSW has configuration mismatches with the provider URLs
+- Migration test expects schema version 2 but schema is at version 3
+- Key-store tests use `vi.resetModules()` for fresh static state on each test — necessary because `KeyStore` has static cache
+
 ## Architecture
 
 ActivePaper is an Electron + React desktop app that lets users select text in PDFs and get AI-powered explanations via multiple providers. It includes a metacognitive "ActivePaper Dashboard" for tracking learning activity and STEM-focused tools for interactive exploration.
 
 ### Process Model
 
-- **Main process** (`electron/`): Window management, IPC handlers, AI provider orchestration, secure key storage, SQLite database
+- **Main process** (`electron/`): Window management, IPC handlers, AI provider orchestration, secure key storage, SQLite database, auto-updater
 - **Renderer process** (`src/`): React UI with PDF viewing, response display, and dashboard
 - **Preload script** (`electron/preload.ts`): Context-isolated IPC bridge exposing `window.api`
 
@@ -43,7 +48,7 @@ ActivePaper is an Electron + React desktop app that lets users select text in PD
 1. User selects text in `PDFViewer` → `useSelection` hook captures text + page context + selection position
 2. User clicks action in floating toolbar (Explain/Summarize/Define) or presses Cmd+J → `useAI` hook calls `window.api.askAI()` with action type
 3. IPC to main process → `ProviderManager` routes to selected AI provider with action-specific prompts
-4. Provider streams response via AsyncIterable → chunks sent back via dynamic IPC channel
+4. Provider streams response via AsyncIterable → chunks buffered (50ms/500 chars) → sent via dynamic IPC channel → preload listener with 90s cleanup timeout
 5. `ResponsePanel` (right sidebar) renders streamed markdown in real-time
 6. Interaction saved to SQLite database → concepts extracted via AI → review card created for 'explain' actions
 7. User can send follow-up questions → conversation history is passed to provider for context
@@ -75,11 +80,13 @@ Current providers: `ollama` (local), `gemini`, `openai`, `anthropic` (cloud).
 
 To add a new provider: implement the interface with an async generator `complete()` method, then register in `ProviderManager.initializeProviders()`. Call `refreshProviders()` after API key changes to reinitialize providers with new keys. Each provider should implement action-specific prompt templates in a `buildUserMessage()` or similar method.
 
+**AI stream safety**: Streams have a 60s inactivity timeout, 2MB max response size cap, and preload IPC listeners auto-cleanup after 90s. Active streams are cancelled on app quit via `AbortController`.
+
 ### Database Layer
 
-SQLite database (`activepaper.db` in userData) via better-sqlite3 for persistent learning analytics:
+SQLite database (`activepaper.db` in userData) via better-sqlite3 with WAL mode for concurrent read/write performance:
 
-- **`electron/database/index.ts`** - Connection management (singleton pattern)
+- **`electron/database/index.ts`** - Connection management (singleton pattern), WAL mode, foreign keys
 - **`electron/database/migrations.ts`** - Schema versioning and migrations
 - **`electron/database/queries/`** - Query modules:
   - `documents.ts` - Document tracking (filepath, scroll position, pages)
@@ -96,9 +103,14 @@ Schema relationships: documents → interactions → concepts (via junction tabl
 
 ### Security
 
-- API keys encrypted via Electron's `safeStorage` API (`electron/security/key-store.ts`)
-- Context isolation enabled; renderer only accesses main process through preload bridge
-- Keys cached in memory for session duration
+- **API key encryption**: Keys encrypted via Electron's `safeStorage` API (`electron/security/key-store.ts`). `KeyStore.setKey()` throws if encryption is unavailable — it does NOT fall back to plaintext.
+- **Context isolation**: Renderer only accesses main process through preload bridge
+- **File read validation**: `file:read` IPC handler validates `.pdf` extension and normalizes path to prevent arbitrary file reads
+- **Gemini API key**: Sent via `x-goog-api-key` HTTP header (not URL query parameter)
+- **Equation evaluation**: Uses `mathjs.evaluate()` (sandboxed) instead of `new Function()` in `useEquationEngine.ts`
+- **DevTools**: Only opened in development (`!app.isPackaged` guard)
+- **CSP**: Configured in `index.html` — `connect-src` narrowed to `localhost:11434` (Ollama), specific cloud API domains, and CDN
+- **Electron fuses**: `scripts/fuses.js` disables `RunAsNode`, `NodeOptions`, CLI inspect, and enforces ASAR-only loading (applied post-build)
 
 ### Key IPC Channels
 
@@ -106,7 +118,10 @@ Schema relationships: documents → interactions → concepts (via junction tabl
 - `ai:cancel` - Cancel an ongoing stream by channelId
 - `provider:list/getCurrent/setCurrent` - Provider management (list uses 30s availability cache)
 - `keys:set/has/delete` - API key management
-- `file:read` - Read file from disk (returns `ArrayBuffer`, not `Buffer`)
+- `file:read` - Read file from disk (returns `ArrayBuffer`, not `Buffer`; validates `.pdf` extension)
+- `app:info` - Returns `{ version, dataPath }`
+- `data:export` - Export all data as JSON (shows save dialog)
+- `data:backup` - Backup SQLite database file (shows save dialog)
 - `db:documents:*` - Document CRUD operations
 - `db:interactions:*` - Interaction storage and statistics
 - `db:concepts:*` - Concept graph and extraction
@@ -136,6 +151,17 @@ The app has three main views toggled via the title bar:
 - ResponsePanel: Fixed 400px right sidebar with glass aesthetic (`glass-panel` class)
 - SelectionPopover: Floating toolbar above text selection
 - STEMToolbar: Top bar buttons for STEM tools (always visible, enabled when text selected)
+
+**First-Run Wizard** (`FirstRunWizard`):
+- Shown on first launch (tracked via `localStorage 'activepaper:setup-complete'`)
+- Welcome screen → provider selection with optional API key setup
+
+### UX Infrastructure
+
+- **Toast notifications**: `react-hot-toast` via `<Toaster>` in App.tsx. Use `toast.success()` / `toast.error()` for user feedback on key operations (key save, highlight create, export, etc.)
+- **Confirmation dialogs**: `ConfirmDialog` component for destructive actions (e.g., conversation deletion). Uses `showConfirm(title, message, onConfirm)` pattern in App.tsx.
+- **Offline detection**: `useOfflineDetection` hook monitors `navigator.onLine`. Offline banner shown in App.tsx. AI requests blocked with toast when offline.
+- **Error boundary**: `ErrorBoundary` component wraps the app in `main.tsx`. Shows crash recovery UI with "Try Again" button.
 
 ### Tab System
 
@@ -178,6 +204,7 @@ Three interactive tools for STEM content, accessible via SelectionPopover (conte
 **Equation Explorer** (`useEquationEngine`, `VariableManipulationModal`):
 - Parses LaTeX equations using AI to extract variables with ranges
 - Sliders to manipulate variable values in real-time
+- Uses `mathjs.evaluate()` for safe expression evaluation (no `new Function()`)
 - Live graph generation showing relationships between variables
 - Detection: `containsLatex()` in `contentDetector.ts`
 
@@ -229,13 +256,14 @@ Database tables: `workspaces`, `workspace_documents` (junction), `conversation_s
 - `useConceptGraph` - Concept graph data with node selection
 - `useUIMode` - Access to UI mode system (reading/investigate/simulation)
 - `useContentDetection` - Detects STEM content (equations, code, terms) in page text for investigate mode
-- `useEquationEngine` - Equation parsing, variable manipulation, graph generation
+- `useEquationEngine` - Equation parsing, variable manipulation, graph generation (uses mathjs)
 - `useCodeSandbox` - Code execution, runtime management, output streaming
 - `useConceptStack` - Recursive concept exploration with stack navigation
 - `useHighlights` - Persistent text highlights with colors and notes
 - `useBookmarks` - Page-level bookmarks
 - `useSearch` - Full-text search with scope filtering (all, current PDF, library, interactions, concepts)
 - `useWorkspace` - Workspace state management with localStorage persistence for multi-document chat
+- `useOfflineDetection` - Monitors `navigator.onLine` for connectivity status
 
 ## Build Notes
 
@@ -250,6 +278,14 @@ Database tables: `workspaces`, `workspace_documents` (junction), `conversation_s
 - **PDF.js CMap configuration**: When calling `getDocument()`, always include `cMapUrl` and `cMapPacked` for proper CJK font rendering. Use CDN: `cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/'`.
 
 - **IPC Buffer serialization**: With `contextIsolation: true`, Node.js `Buffer` objects are converted to `Uint8Array` during IPC. The main process should convert to `ArrayBuffer` before sending to avoid serialization issues.
+
+## Distribution & CI/CD
+
+- **Auto-updater**: `electron-updater` configured in `electron/updater.ts`. Checks for updates 5s after launch in packaged builds. "Check for Updates" menu item in File menu. Publishes to GitHub Releases.
+- **Code signing**: macOS uses `build/entitlements.mac.plist` with hardened runtime. Notarization via `scripts/notarize.js` (afterSign hook). Requires `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` env vars.
+- **Electron fuses**: `scripts/fuses.js` applies security fuses post-build (run manually on packaged binary).
+- **CI**: `.github/workflows/ci.yml` — typecheck + test on push/PR to main.
+- **Release**: `.github/workflows/release.yml` — cross-platform build + sign + publish on `v*` tags. Requires GitHub secrets for signing certificates.
 
 ## PDF.js and React Integration
 
@@ -275,6 +311,7 @@ The PDF viewer uses virtualized rendering (only visible pages + buffer are rende
 - Update the ref *before* updating state to prevent duplicate renders within the same tick
 - Keep `renderedPages` state out of `handleScroll` dependencies to avoid scroll listener recreation
 - **Scroll-direction-aware buffering**: Buffer zones adjust based on scroll direction (2.5x ahead, 0.5x behind when scrolling down; reversed when scrolling up)
+- **PDF load cleanup**: The useEffect cleanup cancels `loadingTaskRef.current.destroy()` to prevent orphaned PDF objects during rapid tab switching
 
 **Zoom scroll adjustment**: When scale changes, `scrollTop` must be adjusted proportionally (`scrollTop * newScale / prevScale`) to maintain the same viewport position.
 
