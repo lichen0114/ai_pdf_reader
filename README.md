@@ -156,8 +156,4 @@ Contributions are welcome. Please open an issue first to discuss proposed change
 
 ## License
 
-**Proprietary Software**
-
-Copyright (c) 2024. All rights reserved.
-
-This software is proprietary and confidential. Unauthorized copying, distribution, modification, or use of this software, via any medium, is strictly prohibited without express written permission from the copyright holder.
+This project is licensed under the [MIT License](LICENSE).
