@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react'
 import { useModeContext } from '../contexts/ModeContext'
 
 /**
@@ -29,12 +30,12 @@ export function useUIMode() {
   const isCodeSimulation = isSimulating && simulationType === 'code'
   const isExplainerSimulation = isSimulating && simulationType === 'explainer'
 
-  // Open a simulation (used by selection popover buttons)
-  const openEquation = () => enterSimulation('equation')
-  const openCodeSandbox = () => enterSimulation('code')
-  const openExplainer = () => enterSimulation('explainer')
+  // Stable simulation openers (used by selection popover buttons)
+  const openEquation = useCallback(() => enterSimulation('equation'), [enterSimulation])
+  const openCodeSandbox = useCallback(() => enterSimulation('code'), [enterSimulation])
+  const openExplainer = useCallback(() => enterSimulation('explainer'), [enterSimulation])
 
-  return {
+  return useMemo(() => ({
     // Current state
     mode,
     simulationType,
@@ -56,5 +57,8 @@ export function useUIMode() {
     openEquation,
     openCodeSandbox,
     openExplainer,
-  }
+  }), [mode, simulationType, isAltPressed, isReading, isInvestigating, isSimulating,
+       isEquationSimulation, isCodeSimulation, isExplainerSimulation,
+       enterInvestigateMode, exitInvestigateMode, enterSimulation, exitSimulation,
+       openEquation, openCodeSandbox, openExplainer])
 }

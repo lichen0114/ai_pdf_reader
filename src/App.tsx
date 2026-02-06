@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
 import { Toaster, toast } from 'react-hot-toast'
 import PDFViewer, { type PDFViewerRef } from './components/PDFViewer'
 import ResponsePanel from './components/ResponsePanel'
@@ -42,7 +42,7 @@ import { useUIMode } from './hooks/useUIMode'
 import { useEquationEngine } from './hooks/useEquationEngine'
 import { useCodeSandbox } from './hooks/useCodeSandbox'
 import { useConceptStack } from './hooks/useConceptStack'
-import { useHighlights } from './hooks/useHighlights'
+import { useHighlights, type HighlightData } from './hooks/useHighlights'
 import { useBookmarks } from './hooks/useBookmarks'
 import { useWorkspace } from './hooks/useWorkspace'
 import { useOfflineDetection } from './hooks/useOfflineDetection'
@@ -220,8 +220,56 @@ function AppContent() {
   const viewerRefs = useRef<Map<string, PDFViewerRef>>(new Map())
   const [activeViewer, setActiveViewer] = useState<PDFViewerRef | null>(null)
 
-  // Create Set from bookmarks for efficient lookup
-  const bookmarkedPages = new Set(bookmarks.map(b => b.page_number))
+  // Stable per-tab callback cache to prevent infinite re-render loops
+  // (inline arrow functions create new refs each render, triggering useEffect cycles in PDFViewer)
+  const tabCallbacksRef = useRef<Map<string, {
+    onScrollChange: (scrollTop: number) => void
+    onScaleChange: (scale: number) => void
+    onError: (msg: string) => void
+  }>>(new Map())
+
+  const getTabCallbacks = useCallback((tabId: string) => {
+    let callbacks = tabCallbacksRef.current.get(tabId)
+    if (!callbacks) {
+      callbacks = {
+        onScrollChange: (scrollTop: number) => updateTab(tabId, { scrollPosition: scrollTop }),
+        onScaleChange: (scale: number) => updateTab(tabId, { scale }),
+        onError: (msg: string) => updateTab(tabId, { loadError: msg }),
+      }
+      tabCallbacksRef.current.set(tabId, callbacks)
+    }
+    return callbacks
+  }, [updateTab])
+
+  // Stable per-tab ref callbacks to prevent React from re-invoking them
+  const viewerRefCallbacksRef = useRef<Map<string, (instance: PDFViewerRef | null) => void>>(new Map())
+  const activeTabIdRef2 = useRef(activeTabId)
+  activeTabIdRef2.current = activeTabId
+
+  const getViewerRefCallback = useCallback((tabId: string) => {
+    let cb = viewerRefCallbacksRef.current.get(tabId)
+    if (!cb) {
+      cb = (instance: PDFViewerRef | null) => {
+        if (instance) {
+          viewerRefs.current.set(tabId, instance)
+        } else {
+          viewerRefs.current.delete(tabId)
+        }
+        if (tabId === activeTabIdRef2.current) {
+          setActiveViewer(instance)
+        }
+      }
+      viewerRefCallbacksRef.current.set(tabId, cb)
+    }
+    return cb
+  }, [])
+
+  // Create Set from bookmarks for efficient lookup (memoized)
+  const bookmarkedPages = useMemo(() => new Set(bookmarks.map(b => b.page_number)), [bookmarks])
+
+  // Stable empty values for inactive tabs to prevent new object creation each render
+  const EMPTY_SET = useRef(new Set<number>()).current
+  const EMPTY_HIGHLIGHTS: HighlightData[] = useMemo(() => [], [])
 
   // Handle creating a highlight from selected text
   const handleCreateHighlight = useCallback(async (color: HighlightColor) => {
@@ -270,17 +318,6 @@ function AppContent() {
   const handleKeyChange = useCallback(() => {
     setProviderRefreshKey(k => k + 1)
   }, [])
-
-  const attachViewerRef = useCallback((tabId: string) => (instance: PDFViewerRef | null) => {
-    if (instance) {
-      viewerRefs.current.set(tabId, instance)
-    } else {
-      viewerRefs.current.delete(tabId)
-    }
-    if (tabId === activeTabId) {
-      setActiveViewer(instance)
-    }
-  }, [activeTabId])
 
   // Open a document (from dashboard, menu, or drag-drop)
   const handleOpenDocument = useCallback(async (documentFilePath: string) => {
@@ -717,6 +754,9 @@ function AppContent() {
       clearResponse()
       clearConversation()
     }
+    // Clean up per-tab callback caches
+    tabCallbacksRef.current.delete(tabId)
+    viewerRefCallbacksRef.current.delete(tabId)
     closeTab(tabId)
   }, [activeTabId, closeTab, clearResponse, clearConversation])
 
@@ -1033,17 +1073,17 @@ function AppContent() {
                     </div>
                   ) : tab.pdfData ? (
                     <PDFViewer
-                      ref={attachViewerRef(tab.id)}
+                      ref={getViewerRefCallback(tab.id)}
                       data={tab.pdfData}
                       initialScrollPosition={tab.scrollPosition}
                       initialScale={tab.scale}
-                      onScrollChange={(scrollTop) => updateTab(tab.id, { scrollPosition: scrollTop })}
-                      onScaleChange={(scale) => updateTab(tab.id, { scale })}
-                      onError={(msg) => updateTab(tab.id, { loadError: msg })}
-                      highlights={tab.id === activeTabId ? highlights : []}
+                      onScrollChange={getTabCallbacks(tab.id).onScrollChange}
+                      onScaleChange={getTabCallbacks(tab.id).onScaleChange}
+                      onError={getTabCallbacks(tab.id).onError}
+                      highlights={tab.id === activeTabId ? highlights : EMPTY_HIGHLIGHTS}
                       onUpdateHighlight={tab.id === activeTabId ? updateHighlight : undefined}
                       onDeleteHighlight={tab.id === activeTabId ? deleteHighlight : undefined}
-                      bookmarkedPages={tab.id === activeTabId ? bookmarkedPages : new Set()}
+                      bookmarkedPages={tab.id === activeTabId ? bookmarkedPages : EMPTY_SET}
                       onToggleBookmark={tab.id === activeTabId ? toggleBookmark : undefined}
                       onPageChange={tab.id === activeTabId ? handlePageChange : undefined}
                       onTotalPagesChange={tab.id === activeTabId ? handleTotalPagesChange : undefined}

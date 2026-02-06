@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react'
 import type { UIMode, SimulationType, ModeContextValue } from '../types/modes'
 
 const ModeContext = createContext<ModeContextValue | null>(null)
@@ -69,16 +69,16 @@ export function ModeProvider({ children }: ModeProviderProps) {
   }, []) // Empty deps - handlers use refs for current state
 
   const enterInvestigateMode = useCallback(() => {
-    if (mode !== 'simulation') {
+    if (modeRef.current !== 'simulation') {
       setMode('investigate')
     }
-  }, [mode])
+  }, [])
 
   const exitInvestigateMode = useCallback(() => {
-    if (mode === 'investigate') {
+    if (modeRef.current === 'investigate') {
       setMode('reading')
     }
-  }, [mode])
+  }, [])
 
   const enterSimulation = useCallback((type: SimulationType) => {
     setMode('simulation')
@@ -90,7 +90,7 @@ export function ModeProvider({ children }: ModeProviderProps) {
     setSimulationType(null)
   }, [])
 
-  const value: ModeContextValue = {
+  const value = useMemo<ModeContextValue>(() => ({
     mode,
     simulationType,
     isAltPressed,
@@ -99,7 +99,7 @@ export function ModeProvider({ children }: ModeProviderProps) {
     enterSimulation,
     exitSimulation,
     setAltPressed: setIsAltPressed,
-  }
+  }), [mode, simulationType, isAltPressed, enterInvestigateMode, exitInvestigateMode, enterSimulation, exitSimulation])
 
   return (
     <ModeContext.Provider value={value}>

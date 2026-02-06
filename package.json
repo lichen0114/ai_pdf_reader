@@ -2,6 +2,7 @@
   "name": "activepaper",
   "version": "1.0.0",
   "type": "module",
+  "license": "MIT",
   "description": "Local-first AI PDF reader with Ollama and cloud provider support",
   "main": "dist-electron/main.js",
   "scripts": {

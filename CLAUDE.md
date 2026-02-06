@@ -346,7 +346,9 @@ Heavy components use refs to avoid callback recreation that causes unnecessary r
 - **PDFViewer**: `scaleRef`, `totalPagesRef` for stable `renderPage` and `handleScroll`
 - **useTabs**: `tabsRef`, `activeTabIdRef` for stable tab operations
 - **App.tsx**: `keyboardStateRef`, `keyboardCallbacksRef` for stable keyboard handler (avoids 17+ dependencies)
-- **ModeContext**: Refs for state in event handlers with empty `[]` deps
+- **App.tsx per-tab callbacks**: `tabCallbacksRef` + `getTabCallbacks()` caches stable `onScrollChange`/`onScaleChange`/`onError` callbacks per tab ID. `viewerRefCallbacksRef` + `getViewerRefCallback()` caches stable ref callbacks. **Critical**: passing inline arrow functions (e.g., `onScaleChange={(s) => updateTab(id, {scale: s})}`) to PDFViewer causes infinite re-render loops because PDFViewer has a `useEffect` that depends on and calls `onScaleChange`. Both caches are cleaned up in `handleTabClose`.
+- **ModeContext**: `enterInvestigateMode`/`exitInvestigateMode` use `modeRef.current` instead of `mode` state for empty deps. Context value is memoized with `useMemo`.
+- **useUIMode**: Return value and convenience functions (`openEquation`, etc.) are memoized.
 
 ### Memory Management
 - **Tab cleanup**: `closeTab` sets `tab.pdfData = null` before removal to free 10-100MB per PDF

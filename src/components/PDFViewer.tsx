@@ -267,7 +267,7 @@ const PDFViewerInner = forwardRef<PDFViewerRef, PDFViewerProps>(function PDFView
     getPageText,
     getOutline,
     renderThumbnail,
-  }))
+  }), [currentPage, totalPages, scale, getPageText, getOutline, renderThumbnail])
 
   // Cancel all in-flight render tasks
   const cancelAllRenderTasks = useCallback(() => {

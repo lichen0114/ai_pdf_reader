@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 
 interface WorkspaceState {
   workspaces: WorkspaceWithCount[]
@@ -19,18 +19,23 @@ export function useWorkspace() {
     error: null,
   })
 
+  const hasRestoredWorkspace = useRef(false)
+  const selectWorkspaceRef = useRef<(id: string | null) => Promise<void>>()
+
   // Load workspaces on mount
   useEffect(() => {
     loadWorkspaces()
   }, [])
 
-  // Load saved workspace from localStorage
+  // Load saved workspace from localStorage (once)
   useEffect(() => {
+    if (hasRestoredWorkspace.current) return
     const savedWorkspaceId = localStorage.getItem(CURRENT_WORKSPACE_KEY)
     if (savedWorkspaceId && state.workspaces.length > 0) {
       const workspace = state.workspaces.find(w => w.id === savedWorkspaceId)
-      if (workspace) {
-        selectWorkspace(savedWorkspaceId)
+      if (workspace && selectWorkspaceRef.current) {
+        selectWorkspaceRef.current(savedWorkspaceId)
+        hasRestoredWorkspace.current = true
       }
     }
   }, [state.workspaces])
@@ -80,6 +85,7 @@ export function useWorkspace() {
       setState(prev => ({ ...prev, isLoading: false, error: message }))
     }
   }, [loadWorkspaceDocuments])
+  selectWorkspaceRef.current = selectWorkspace
 
   const createWorkspace = useCallback(async (name: string, description?: string): Promise<Workspace | null> => {
     setState(prev => ({ ...prev, error: null }))
